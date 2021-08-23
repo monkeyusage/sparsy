@@ -3,9 +3,10 @@ import numpy as np
 
 from sys import argv
 
-file = argv[1]
-if file in ("", None):
-    print("enter valid path")
+try:
+    file = argv[1]
+except IndexError:
+    print("enter valid path for .csv analysis")
     exit()
 
 data = pd.read_csv(file, sep="\t")
