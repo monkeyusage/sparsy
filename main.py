@@ -28,3 +28,10 @@ total = subsh.values.sum(axis=1)
 idx = subsh.index.values
 subsh = (subsh.values / total[:, None]) * 100
 subsh = pd.DataFrame({"firm":idx, **{f"subsh{idx}":subsh[:,idx] for idx in range(subsh.shape[1])}})
+
+values = subsh.values[:,1:]
+copy = np.zeros_like(values)
+
+for i in range(len(values)):
+    for j in range(len(values)):
+        copy[i,j] = values[i,j] / (np.sqrt(values[i,i]) * np.sqrt(values[j,j]))
