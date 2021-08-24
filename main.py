@@ -4,7 +4,7 @@ import numpy as np
 from sys import argv
 
 
-def mahalanobis(x=np.ndarray, data=np.ndarray):
+def mahalanobis(x:np.ndarray, data:np.ndarray):
     x_mu = x - np.mean(data)
     cov = np.cov(data.T)
     inv_covmat = np.linalg.inv(cov)
@@ -57,7 +57,7 @@ def main():
     standard = mal_corr.copy()
     covmal_corr = np.dot(np.dot(subsh, var), subsh.T)
     cov_standard = covmal_corr.copy()
-    
+
     import pdb;pdb.set_trace()
 
 if __name__ == "__main__":

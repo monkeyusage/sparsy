@@ -83,15 +83,9 @@ matrix standard=normsubsh*normsubsh'
 matrix covstandard=subsh*subsh'
 save "temp_`z'",replace
 
-
-
 global X=ceil($num/500)*500 - 500
 
 * BL: TOO LONG, NEED TO SPLIT UP MATRICES
-
-
-
-
 forv mal=0(1)1{
 u "temp_`z'",clear
 
@@ -212,8 +206,3 @@ compress
 save spill_output_`z',replace
 clear all
 }
-
-
-
-
-
