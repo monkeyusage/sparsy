@@ -1,16 +1,11 @@
+"""
+Parsy is a program that computes various distances between companies' carateristics
+"""
 import pandas as pd
 import numpy as np
+from time import perf_counter
 
 from sys import argv
-
-
-def mahalanobis(x:np.ndarray, data:np.ndarray):
-    x_mu = x - np.mean(data)
-    cov = np.cov(data.T)
-    inv_covmat = np.linalg.inv(cov)
-    left = np.dot(x_mu, inv_covmat)
-    mahal = np.dot(left, x_mu.T)
-    return mahal.diagonal()
 
 def main():
     try:
@@ -18,47 +13,89 @@ def main():
     except IndexError:
         print("enter valid path for .csv analysis")
         exit()
+    
+    assert file.endswith(".tsv") or file.endswith(".dta"), "data file format should be either tsv or dta"
+    
+    # read in the data file
+    data = pd.read_csv(file, sep="\t") if file.endswith(".tsv") else pd.read_stata(file)
+    
+    del file
 
-    data = pd.read_csv(file, sep="\t")
+    # set the appropriate data types
     data["division"] = data["division"].astype(np.uint64)
     data["year"] = data["year"].astype(np.uint16)
-    data["nclass"] = data["nclass"].astype(np.uint8)
     data["firm"] = data["firm"].astype(np.uint16)
+    data["nclass"] = data["nclass"].astype(np.uint8)
 
+    # sort by nclass and create a new tclass independant of naming of nclass just in case
     data = data.sort_values("nclass")
     tclass_replacements = dict((k, v) for k, v in zip(data.nclass.unique(), range(data.nclass.nunique())))
     data["tclass"] = data.nclass.replace(tclass_replacements)
 
     data = data.sort_values(["firm", "tclass"])
 
-    subsh = pd.crosstab(data["firm"], data["tclass"]).astype(np.uint32)
+    # crosstab on firm and class
+    subsh = pd.crosstab(data["firm"], data["tclass"]).astype(np.uint16)
+    index = subsh.index.values.copy()
     total = subsh.values.sum(axis=1)
-    subsh = (subsh.values / total[:, None]) * 100
+    values = (subsh.values / total[:, None]) * 100
+    tech = data["tclass"].nunique()
 
-    del total
+    del total, subsh, data
 
-    var = np.dot(subsh.T, subsh)
+    num = values.shape[0]
+
+    # matrix of correlations between classes
+    var = np.dot(values.T, values)
     base_var = var.copy()
 
-    for i in range(var.shape[0]):
-        for j in range(var.shape[0]):
+    # var = tclass_corr(tech, var, base_var)
+    for i in range(tech):
+        for j in range(tech):
             var[i,j] = var[i,j] / (np.sqrt(base_var[i,i]) * np.sqrt(base_var[j,j]))
 
-    norm_subsh = subsh.copy()
-    base_std = np.dot(subsh, subsh.T)
-    for i in range(base_std.shape[0]):
-        for j in range(var.shape[0]):
-            norm_subsh[i,j] = subsh[i,j] / np.sqrt(base_std[i,i])
+    # correlation between firms overs classes (n x n || 694x694)
+    base_std = np.dot(values, values.T)
     
-    std = np.dot(norm_subsh, norm_subsh.T)
-    cov_std = np.dot(subsh, subsh.T)
+    # norm_values = firm_corr(num, tech, values, base_std)
+    norm_values = values.copy()
+    for i in range(num):
+        for j in range(tech):
+            norm_values[i,j] = values[i,j] / np.sqrt(base_std[i,i])
+    
+    # generate standard measures
+    std = (np.dot(norm_values, norm_values.T).round(2) * 100).astype(np.uint8)
+    cov_std = (np.dot(values, values.T).round(2) * 100).astype(np.uint32)
 
-    mal_corr = np.dot(np.dot(norm_subsh, var),norm_subsh.T)
-    standard = mal_corr.copy()
-    covmal_corr = np.dot(np.dot(subsh, var), subsh.T)
-    cov_standard = covmal_corr.copy()
+    # generate MAL measure
+    mal = (np.dot(np.dot(norm_values, var),norm_values.T).round(2) * 100).astype(np.uint8)
+    cov_mal = (np.dot(np.dot(values, var), values.T).round(2) * 100).astype(np.uint32)
 
-    import pdb;pdb.set_trace()
+    # flatten arrays and store them in dict for pandas purpose
+    results = dict((name,arr.flatten()) for name,arr in {"std":std, "mal":mal, "cov_std":cov_std, "cov_mal":cov_mal}.items())
+
+    del values, norm_values, var, base_var
+
+    assert len(set([arr.shape[0] for arr in results.values()])) == 1, "arrays are not all the same length"
+    
+    # firm indices
+    firms = np.repeat(index, std.shape[0])
+    firms_ = list(index) * std.shape[0]
+
+    # df creation for further saving
+    df = pd.DataFrame(
+        {
+            "firm":firms,
+            "firm_":firms_,
+            **results
+        }
+    )
+
+    # saving into memory
+    df.to_csv("data/output.tsv", sep="\t", index=False)
 
 if __name__ == "__main__":
+    t0 = perf_counter()
     main()
+    t1 = perf_counter()
+    print(f"Elapsed time: {t1 - t0} seconds")

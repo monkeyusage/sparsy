@@ -1,31 +1,31 @@
 
-cd "e:\RA_matrix"		/* define the file directory */
+cd "e:\RA_matrix"        /* define the file directory */
 
 * this loop is to subset the data
 * matrix raw data.dta: main input data file has 4 variables: division, year, nclass, firm
 forvalues z = 1975(1)1980 {
 use "matrix raw data.dta",clear  
-keep if year == `z' |  year == `z'-1 |  year == `z'-2	/* Note: "|" is "or" operator	*/
+keep if year == `z' |  year == `z'-1 |  year == `z'-2    /* Note: "|" is "or" operator    */
 save "data1_`z'.dta",replace 
 }
 
 clear all
-set more off		/* STATA specific command */
-set maxvar 32767	/* STATA specific command to set max # of variables */
-set matsize 11000	/* STATA specific command to set max matrix size */
+set more off        /* STATA specific command */
+set maxvar 32767    /* STATA specific command to set max # of variables */
+set matsize 11000    /* STATA specific command to set max matrix size */
 
 forvalues z = 1975(1)1980  {
 use "data1_`z'.dta",clear 
 sort nclass
 /* create sequential number of nclass */
-gen tclass=1	/* tclass is the labelng of nclass in sequence; Note: gen and egen are STATA command to generate new variables */
+gen tclass=1    /* tclass is the labelng of nclass in sequence; Note: gen and egen are STATA command to generate new variables */
 replace tclass=tclass[_n-1]+1*(nclass~=nclass[_n-1]) if nclass[_n-1]~=. /* Note: [_n-1] is lag 1; ~= is not equal; "." is missing */
-egen TECH=max(tclass)  	/* create TECH to be the max of tclass */ 
-global define tech=TECH  	/* global macro defining tech=TECH ; ; to be called up later as $tech */
-egen divByFirm=count(division),by(firm) 	/* get total # of divisions by firm */
-egen divByFirmTclass=count(division),by(firm tclass) 	/* get total # of divisions by firm & tclass */
-fillin firm tclass  	/* rectangularize firm & tclass by filling in missing observations */
-drop _f  	/* drop temporary variable _f created by fillin in line 26 */
+egen TECH=max(tclass)      /* create TECH to be the max of tclass */ 
+global define tech=TECH      /* global macro defining tech=TECH ; ; to be called up later as $tech */
+egen divByFirm=count(division),by(firm)     /* get total # of divisions by firm */
+egen divByFirmTclass=count(division),by(firm tclass)     /* get total # of divisions by firm & tclass */
+fillin firm tclass      /* rectangularize firm & tclass by filling in missing observations */
+drop _f      /* drop temporary variable _f created by fillin in line 26 */
 sort firm tclass
 drop if firm==firm[_n-1]&tclass==tclass[_n-1]  /* drop duplicate observations in terms of firm and tclass */
 gen double subsh=100*(divByFirmTclass/divByFirm)  /* generate variable subsh in double format */
@@ -37,9 +37,9 @@ reshape wide subsh, i(firm) j(tclass) /* reshaping the data from long to wide, j
 compress
 save "data2_`z'.dta",replace
 clear all
-set more off		/* STATA specific command */
-set maxvar 32767	/* STATA specific command to set max # of variables */
-set matsize 11000	/* STATA specific command to set max matrix size */
+set more off        /* STATA specific command */
+set maxvar 32767    /* STATA specific command to set max # of variables */
+set matsize 11000    /* STATA specific command to set max matrix size */
 use "data2_`z'.dta",clear
 
 capture drop nclass subcat tclass TECH total
@@ -87,54 +87,54 @@ global X=ceil($num/500)*500 - 500
 
 * BL: TOO LONG, NEED TO SPLIT UP MATRICES
 forv mal=0(1)1{
-u "temp_`z'",clear
+    u "temp_`z'",clear
 
-*Generate the Malhabois measure
-if `mal'==1 {
-matrix mal_corr=normsubsh*var*normsubsh'
-matrix standard=mal_corr
-matrix covmal_corr=subsh*var*subsh'
-matrix covstandard=covmal_corr
-}
-*Convert back into scalar data
-keep firm
-sort firm
-local J=$X+1
-forv j=1(500)`J' {
-preserve
-local j2=`j'+499
-if `j'==`J' {
-	local j2 .y6
-}
-matrix covstandardj`j'=covstandard[1...,`j'..`j2']
-matrix standardj`j'=standard[1...,`j'..`j2']
-svmat standardj`j',n(standard)   /* save matrix column "standard" as variable standardj`j' */
-svmat covstandardj`j',n(covstandard)   /* save matrix column "covstandard" as variable covstandardj`j' */
-compress
-reshape long standard covstandard,i(firm) j(num_)   /* reshaping from wide to long, j () is  new variable */
-capture drop subsh*
-rename *standard *tec	/* renaming variables ending with "standard" to end with "tec"	*/ 
-replace num_ = `j'+num_-1
-sort firm num_
-*convert to integers to reduce memory size - renormalize later
-foreach var in tec covtec {
-capture replace `var'=100*round(`var',0.01)
-}
-compress
-if `mal'==1 {
-rename *tec mal*tec		/* renaming variables ending with "tec" to start with "mal"	*/ 
-save "output_short70_mal_newj`j'_`z'",replace
-}
-else {
-save "output_short70_newj`j'_`z'",replace
-}
-restore
-}
+    *Generate the Malhabois measure
+    if `mal'==1 {
+        matrix mal_corr=normsubsh*var*normsubsh'
+        matrix standard=mal_corr
+        matrix covmal_corr=subsh*var*subsh'
+        matrix covstandard=covmal_corr
+    }
+    *Convert back into scalar data
+    keep firm
+    sort firm
+    local J=$X+1
+    forv j=1(500)`J' {
+        preserve
+        local j2=`j'+499
+        if `j'==`J' {
+            local j2 .y6
+    }
+    matrix covstandardj`j'=covstandard[1...,`j'..`j2']
+    matrix standardj`j'=standard[1...,`j'..`j2']
+    svmat standardj`j',n(standard)   /* save matrix column "standard" as variable standardj`j' */
+    svmat covstandardj`j',n(covstandard)   /* save matrix column "covstandard" as variable covstandardj`j' */
+    compress
+    reshape long standard covstandard,i(firm) j(num_)   /* reshaping from wide to long, j () is  new variable */
+    capture drop subsh*
+    rename *standard *tec    /* renaming variables ending with "standard" to end with "tec"    */ 
+    replace num_ = `j'+num_-1
+    sort firm num_
+    *convert to integers to reduce memory size - renormalize later
+    foreach var in tec covtec {
+    capture replace `var'=100*round(`var',0.01)
+    }
+    compress
+    if `mal'==1 {
+    rename *tec mal*tec        /* renaming variables ending with "tec" to start with "mal"    */ 
+    save "output_short70_mal_newj`j'_`z'",replace
+    }
+    else {
+    save "output_short70_newj`j'_`z'",replace
+    }
+    restore
+    }
 }
 foreach f in output_short70_new output_short70_mal_new { /*there are two types of outputs, output_short70_new based on correlation measure, output_short70_mal_new  baseed on Mahalanobis measure*/
 clear
 forv j=1(500)`J' {
-	append using "`f'j`j'_`z'"
+    append using "`f'j`j'_`z'"
 }
 sort firm num_
 merge m:1 num_ using "num_gvkey__`z'"
@@ -143,7 +143,7 @@ drop _m
 save "`f'_`z'", replace
 * clean up
 forv j=1(500)`J' {
-	erase "`f'j`j'_`z'.dta"  /*delete redundant data files */
+    erase "`f'j`j'_`z'.dta"  /*delete redundant data files */
 }
 }
 }
