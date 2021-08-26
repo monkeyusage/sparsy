@@ -7,6 +7,11 @@ from time import perf_counter
 
 from sys import argv
 
+def zero_diag(array: np.ndarray) -> np.ndarray:
+    for i in range(array.shape[0]):
+        array[i,i] = 0
+    return array
+
 def main():
     try:
         file = argv[1]
@@ -41,7 +46,7 @@ def main():
     values = (subsh.values / total[:, None]) * 100
     tech = data["tclass"].nunique()
 
-    del total, subsh, data
+    # del total, subsh, data
 
     num = values.shape[0]
 
@@ -59,40 +64,35 @@ def main():
     
     # norm_values = firm_corr(num, tech, values, base_std)
     norm_values = values.copy()
-    for i in range(num):
-        for j in range(tech):
+    for j in range(tech):
+        for i in range(num):
             norm_values[i,j] = values[i,j] / np.sqrt(base_std[i,i])
     
     # generate standard measures
-    std = (np.dot(norm_values, norm_values.T).round(2) * 100).astype(np.uint8)
-    cov_std = (np.dot(values, values.T).round(2) * 100).astype(np.uint32)
+    std = (np.dot(norm_values, norm_values.T).round(decimals=2) * 100).astype(np.uint32)
+    cov_std = (np.dot(values, values.T).round(decimals=2) * 100).astype(np.uint32)
 
     # generate MAL measure
-    mal = (np.dot(np.dot(norm_values, var),norm_values.T).round(2) * 100).astype(np.uint8)
-    cov_mal = (np.dot(np.dot(values, var), values.T).round(2) * 100).astype(np.uint32)
+    mal = (np.dot(np.dot(norm_values, var),norm_values.T).round(decimals=2) * 100).astype(np.uint64)
+    cov_mal = (np.dot(np.dot(values, var), values.T).round(decimals=2) * 100).astype(np.uint64)
 
-    # flatten arrays and store them in dict for pandas purpose
-    results = dict((name,arr.flatten()) for name,arr in {"std":std, "mal":mal, "cov_std":cov_std, "cov_mal":cov_mal}.items())
+    # for the 4 metrics
+    # sum up rows but before remove diagonal numbers (zero them out) so we don t count them twice
+    # then log each one
+    results = dict((name,zero_diag(arr).sum(axis=1)) for name,arr in {"std":std, "mal":mal, "cov_std":cov_std, "cov_mal":cov_mal}.items())
 
-    del values, norm_values, var, base_var
-
+    # del values, norm_values, var, base_var
     assert len(set([arr.shape[0] for arr in results.values()])) == 1, "arrays are not all the same length"
-    
-    # firm indices
-    firms = np.repeat(index, std.shape[0])
-    firms_ = list(index) * std.shape[0]
 
     # df creation for further saving
-    df = pd.DataFrame(
-        {
-            "firm":firms,
-            "firm_":firms_,
-            **results
-        }
-    )
+    df = pd.DataFrame(results)
 
     # saving into memory
-    df.to_csv("data/output.tsv", sep="\t", index=False)
+    df.to_csv("data/spill_output_nolog.tsv", sep="\t", index=False)
+    pd.DataFrame(
+        data=np.log(df.values).astype(np.float16), columns=df.columns
+    ).to_csv("data/spill_output_log.tsv", sep="\t", index=False)
+    import pdb;pdb.set_trace()
 
 if __name__ == "__main__":
     t0 = perf_counter()
