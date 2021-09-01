@@ -14,26 +14,27 @@ def main():
         print("enter valid path for .csv analysis")
         exit()
     
-    assert file.endswith(".tsv") or file.endswith(".dta"), "data file format should be either tsv or dta"
+    assert file.endswith(".tsv"), "data file format should be tsv"
     
     # read in the data file
-    data = pd.read_csv(file, sep="\t") if file.endswith(".tsv") else pd.read_stata(file)
+    # uint8 => 255, uint16 => 65000, uint32 => 4294967295
+    data = pd.read_csv(
+        file,
+        sep="\t",
+        usecols=["firm", "nclass"],
+        dtype={
+            "firm":np.uint16, # if company max int is above 65000 set it to uint32
+            "nclass":"category"
+        }
+    )
     
     del file
-
-    # set the appropriate data types
-    data["division"] = data["division"].astype(np.uint64)
-    data["year"] = data["year"].astype(np.uint16)
-    data["firm"] = data["firm"].astype(np.uint16)
-    data["nclass"] = data["nclass"].astype(np.uint8)
 
     # sort by nclass and create a new tclass independant of naming of nclass just in case
     data = data.sort_values("nclass")
     tclass_replacements = dict((k, v) for k, v in zip(data.nclass.unique(), range(data.nclass.nunique())))
     data["tclass"] = data.nclass.replace(tclass_replacements)
-
-    data = data.sort_values(["firm", "tclass"])
-
+    
     # crosstab on firm and class
     subsh = pd.crosstab(data["firm"], data["tclass"]).astype(np.uint16)
     index = subsh.index.values.copy()
@@ -45,7 +46,7 @@ def main():
 
     num = values.shape[0]
 
-    # matrix of correlations between classes
+    # compute matrix of correlations between classes
     var = np.dot(values.T, values)
     base_var = var.copy()
 
@@ -67,7 +68,7 @@ def main():
     std = (np.dot(norm_values, norm_values.T).round(2) * 100).astype(np.uint8)
     cov_std = (np.dot(values, values.T).round(2) * 100).astype(np.uint32)
 
-    # generate MAL measure
+    # generate MAHALANOBIS measure ==> gives n x n matrix
     mal = (np.dot(np.dot(norm_values, var),norm_values.T).round(2) * 100).astype(np.uint8)
     cov_mal = (np.dot(np.dot(values, var), values.T).round(2) * 100).astype(np.uint32)
 
