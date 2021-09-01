@@ -37,19 +37,16 @@ def firm_corr(num:int, tech:int, values:np.ndarray, base_std:np.ndarray) -> np.n
             norm_values[i,j] = values[i,j] / np.sqrt(base_std[i,i])
     return norm_values
 
-def main(data: pd.DataFrame) -> None:
-    # try:
-    #     file = argv[1]
-    # except IndexError:
-    #     print("enter valid path for .csv analysis")
-    #     exit()
-    
-    # assert file.endswith(".tsv") or file.endswith(".dta"), "data file format should be either tsv or dta"
-    
-    # # read in the data file
-    # data = pd.read_csv(file, sep="\t") if file.endswith(".tsv") else pd.read_stata(file)
-
-    # del file
+def main() -> None:
+    data = pd.read_csv(
+        "data/data.tsv",
+        sep="\t",
+        usecols=["firm", "nclass"],
+        dtype={
+            "firm":np.uint16, # if company max int is above 65000 set it to uint32
+            "nclass":"category"
+        }
+    )
 
     # sort by nclass and create a new tclass independant of naming of nclass just in case
     data = data.sort_values("nclass")
@@ -102,8 +99,7 @@ def main(data: pd.DataFrame) -> None:
     df.to_csv("data/spill_output_log.tsv", sep="\t", index=False)
 
 if __name__ == "__main__":
-    data = pd.DataFrame(data=gen_data(), columns=("firm", "nclass"))
     t0 = perf_counter()
-    main(data)
+    main()
     t1 = perf_counter()
     print(f"Elapsed time: {t1 - t0} seconds")
