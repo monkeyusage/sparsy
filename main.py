@@ -5,9 +5,8 @@ import pandas as pd
 import numpy as np
 from numba import njit
 from time import perf_counter
-#from scipy import sparse
+from json import load
 
-from sys import argv
 
 def gen_data() -> np.ndarray:
     return np.array([
@@ -38,19 +37,19 @@ def firm_corr(num:int, tech:int, values:np.ndarray, base_std:np.ndarray) -> np.n
             norm_values[i,j] = values[i,j] / np.sqrt(base_std[i,i])
     return norm_values
 
-def main(data: pd.DataFrame) -> None:
-    # try:
-    #     file = argv[1]
-    # except IndexError:
-    #     print("enter valid path for .csv analysis")
-    #     exit()
-    
-    # assert file.endswith(".tsv") or file.endswith(".dta"), "data file format should be either tsv or dta"
-    
-    # # read in the data file
-    # data = pd.read_csv(file, sep="\t") if file.endswith(".tsv") else pd.read_stata(file)
+def main() -> None:
+    with open("data/config.json", "r") as config_file:
+        config = load(config_file)
 
-    # del file
+    data = pd.read_csv(
+        "data/data.tsv",
+        sep="\t",
+        usecols=["firm", "nclass"],
+        dtype={
+            "firm":np.uint32,
+            "nclass":"category"
+        }
+    )
 
     # sort by nclass and create a new tclass independant of naming of nclass just in case
     data = data.sort_values("nclass")
@@ -59,7 +58,7 @@ def main(data: pd.DataFrame) -> None:
 
     # crosstab on firm and class
     subsh = pd.crosstab(data["firm"], data["tclass"]).astype(np.uint32)
-    firms = subsh.index.values
+    firms = subsh.index.values.copy()
     total = subsh.values.sum(axis=1)
     values = ((subsh.values / total[:, None]) * 100)
     tech = data["tclass"].nunique()
@@ -68,28 +67,27 @@ def main(data: pd.DataFrame) -> None:
 
     num = values.shape[0]
 
-    # matrix of correlations between classes
-    var = np.dot(values.T, values)
+    # compute matrix of correlations between classes
+    var : np.ndarray = np.dot(values.T, values)
     var = tclass_corr(tech, var)
 
     # correlation between firms overs classes (n x n || 694x694)
-    base_std = np.dot(values, values.T)
+    base_std : np.ndarray = np.dot(values, values.T)
     norm_values = firm_corr(num, tech, values, base_std)
     
     # generate standard measures
-    std = (np.dot(norm_values, norm_values.T).round(decimals=2) * 100).astype(np.uint32)
-    cov_std = (np.dot(values, values.T).round(decimals=2) * 100).astype(np.uint32)
+    std = (np.dot(norm_values, norm_values.T).round(2) * 100).astype(np.uint8)
+    cov_std = (np.dot(values, values.T).round(2) * 100).astype(np.uint32)
 
-    # generate MAL measure
-    mal = (np.dot(np.dot(norm_values, var),norm_values.T).round(decimals=2) * 100).astype(np.uint64)
-    cov_mal = (np.dot(np.dot(values, var), values.T).round(decimals=2) * 100).astype(np.uint64)
+    # generate MAHALANOBIS measure ==> gives n x n matrix
+    mal = (np.dot(np.dot(norm_values, var),norm_values.T).round(2) * 100).astype(np.uint8)
+    cov_mal = (np.dot(np.dot(values, var), values.T).round(2) * 100).astype(np.uint32)
 
-    # for the 4 metrics
-    # sum up rows but before remove diagonal numbers (zero them out) so we don t count them twice
-    # then log each one
-    results = dict((name,zero_diag(arr).sum(axis=1)) for name,arr in {"std":std, "mal":mal, "cov_std":cov_std, "cov_mal":cov_mal}.items())
+    # flatten arrays and store them in dict for pandas purpose
+    results = dict((name,arr.flatten()) for name,arr in {"std":std, "mal":mal, "cov_std":cov_std, "cov_mal":cov_mal}.items())
 
     del values, norm_values, var
+
     assert len(set([arr.shape[0] for arr in results.values()])) == 1, "arrays are not all the same length"
 
     # df creation for further saving
@@ -100,8 +98,7 @@ def main(data: pd.DataFrame) -> None:
     df.to_csv("data/spill_output_log.tsv", sep="\t", index=False)
 
 if __name__ == "__main__":
-    data = pd.DataFrame(data=gen_data(), columns=("firm", "nclass"))
     t0 = perf_counter()
-    main(data)
+    main()
     t1 = perf_counter()
     print(f"Elapsed time: {t1 - t0} seconds")
