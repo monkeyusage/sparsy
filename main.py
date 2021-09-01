@@ -5,13 +5,14 @@ import pandas as pd
 import numpy as np
 from numba import njit
 from time import perf_counter
+#from scipy import sparse
 
 from sys import argv
 
 def gen_data() -> np.ndarray:
     return np.array([
-        np.random.randint(low=1, high=7000, size=15800000),
-        np.random.randint(low=1, high=6, size=15800000)
+        np.random.randint(low=1, high=500_000, size=15_800_000),
+        np.random.randint(low=1, high=6, size=15_800_000)
     ]).T
 
 @njit
@@ -56,13 +57,11 @@ def main(data: pd.DataFrame) -> None:
     tclass_replacements = dict((k, v) for k, v in zip(data.nclass.unique(), range(data.nclass.nunique())))
     data["tclass"] = data.nclass.replace(tclass_replacements)
 
-    data = data.sort_values(["firm", "tclass"])
-
     # crosstab on firm and class
-    subsh = pd.crosstab(data["firm"], data["tclass"]).astype(np.uint16)
+    subsh = pd.crosstab(data["firm"], data["tclass"]).astype(np.uint32)
     firms = subsh.index.values
     total = subsh.values.sum(axis=1)
-    values = (subsh.values / total[:, None]) * 100
+    values = ((subsh.values / total[:, None]) * 100)
     tech = data["tclass"].nunique()
 
     del total, subsh, data
@@ -95,9 +94,8 @@ def main(data: pd.DataFrame) -> None:
 
     # df creation for further saving
     df = pd.DataFrame({"firm":firms,**results})
-
+    
     # saving into memory
-    df.to_csv("data/spill_output_nolog.tsv", sep="\t", index=False)
     df.iloc[:,1:] = np.log(df.drop("firm", axis=1).values, dtype=np.float32)
     df.to_csv("data/spill_output_log.tsv", sep="\t", index=False)
 
