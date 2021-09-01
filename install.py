@@ -16,7 +16,8 @@ if not path.exists("data"):
     config = {
         "input_data":"",
         "output_data":"",
-        "date_range":3
+        "date_range":3,
+        "stress_test":False
     }
 
     with open("data/config.json", "w") as config_file:
