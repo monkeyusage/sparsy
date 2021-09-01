@@ -6,8 +6,6 @@ import numpy as np
 from numba import njit
 from time import perf_counter
 
-from sys import argv
-
 def gen_data() -> np.ndarray:
     return np.array([
         np.random.randint(low=1, high=7000, size=15800000),
@@ -52,12 +50,10 @@ def main() -> None:
     data = data.sort_values("nclass")
     tclass_replacements = dict((k, v) for k, v in zip(data.nclass.unique(), range(data.nclass.nunique())))
     data["tclass"] = data.nclass.replace(tclass_replacements)
-
-    data = data.sort_values(["firm", "tclass"])
-
+    
     # crosstab on firm and class
     subsh = pd.crosstab(data["firm"], data["tclass"]).astype(np.uint16)
-    firms = subsh.index.values
+    index = subsh.index.values.copy()
     total = subsh.values.sum(axis=1)
     values = (subsh.values / total[:, None]) * 100
     tech = data["tclass"].nunique()
@@ -66,37 +62,54 @@ def main() -> None:
 
     num = values.shape[0]
 
-    # matrix of correlations between classes
+    # compute matrix of correlations between classes
     var = np.dot(values.T, values)
-    var = tclass_corr(tech, var)
+    base_var = var.copy()
+
+    # var = tclass_corr(tech, var, base_var)
+    for i in range(tech):
+        for j in range(tech):
+            var[i,j] = var[i,j] / (np.sqrt(base_var[i,i]) * np.sqrt(base_var[j,j]))
 
     # correlation between firms overs classes (n x n || 694x694)
     base_std = np.dot(values, values.T)
-    norm_values = firm_corr(num, tech, values, base_std)
+    
+    # norm_values = firm_corr(num, tech, values, base_std)
+    norm_values = values.copy()
+    for i in range(num):
+        for j in range(tech):
+            norm_values[i,j] = values[i,j] / np.sqrt(base_std[i,i])
     
     # generate standard measures
-    std = (np.dot(norm_values, norm_values.T).round(decimals=2) * 100).astype(np.uint32)
-    cov_std = (np.dot(values, values.T).round(decimals=2) * 100).astype(np.uint32)
+    std = (np.dot(norm_values, norm_values.T).round(2) * 100).astype(np.uint8)
+    cov_std = (np.dot(values, values.T).round(2) * 100).astype(np.uint32)
 
-    # generate MAL measure
-    mal = (np.dot(np.dot(norm_values, var),norm_values.T).round(decimals=2) * 100).astype(np.uint64)
-    cov_mal = (np.dot(np.dot(values, var), values.T).round(decimals=2) * 100).astype(np.uint64)
+    # generate MAHALANOBIS measure ==> gives n x n matrix
+    mal = (np.dot(np.dot(norm_values, var),norm_values.T).round(2) * 100).astype(np.uint8)
+    cov_mal = (np.dot(np.dot(values, var), values.T).round(2) * 100).astype(np.uint32)
 
-    # for the 4 metrics
-    # sum up rows but before remove diagonal numbers (zero them out) so we don t count them twice
-    # then log each one
-    results = dict((name,zero_diag(arr).sum(axis=1)) for name,arr in {"std":std, "mal":mal, "cov_std":cov_std, "cov_mal":cov_mal}.items())
+    # flatten arrays and store them in dict for pandas purpose
+    results = dict((name,arr.flatten()) for name,arr in {"std":std, "mal":mal, "cov_std":cov_std, "cov_mal":cov_mal}.items())
 
-    del values, norm_values, var
+    del values, norm_values, var, base_var
+
     assert len(set([arr.shape[0] for arr in results.values()])) == 1, "arrays are not all the same length"
+    
+    # firm indices
+    firms = np.repeat(index, std.shape[0])
+    firms_ = list(index) * std.shape[0]
 
     # df creation for further saving
-    df = pd.DataFrame({"firm":firms,**results})
+    df = pd.DataFrame(
+        {
+            "firm":firms,
+            "firm_":firms_,
+            **results
+        }
+    )
 
     # saving into memory
-    df.to_csv("data/spill_output_nolog.tsv", sep="\t", index=False)
-    df.iloc[:,1:] = np.log(df.drop("firm", axis=1).values, dtype=np.float32)
-    df.to_csv("data/spill_output_log.tsv", sep="\t", index=False)
+    df.to_csv("data/output.tsv", sep="\t", index=False)
 
 if __name__ == "__main__":
     t0 = perf_counter()
