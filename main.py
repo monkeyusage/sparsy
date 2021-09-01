@@ -17,7 +17,7 @@ def main():
     assert file.endswith(".tsv"), "data file format should be tsv"
     
     # read in the data file
-    # uint8 => 255, uint16 => 65000, uint32 => 4294967295
+    # uint8 => 255, uint16 => 65000 uint32 => 4294967295
     data = pd.read_csv(
         file,
         sep="\t",
