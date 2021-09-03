@@ -2,3 +2,4 @@ numba==0.54.0
 pandas
 numpy
 scipy
+tqdm
