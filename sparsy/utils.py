@@ -10,13 +10,8 @@ import pandas as pd
 T = TypeVar("T")
 
 
-def chunked_iterable(iterable: Iterable[T], size: int) -> Iterator[tuple[T, ...]]:
-    it = iter(iterable)
-    while True:
-        chunk = tuple(islice(it, size))
-        if not chunk:
-            break
-        yield chunk
+def chunker(seq:pd.DataFrame, size:int) -> Iterator[pd.DataFrame]:
+    return (seq.iloc[pos:pos + size] for pos in range(0, len(seq), size))
 
 
 def clean_up() -> None:

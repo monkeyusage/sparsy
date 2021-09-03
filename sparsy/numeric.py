@@ -1,87 +1,68 @@
 from __future__ import annotations
 
 import numpy as np
-from numpy import ma
-from numba import njit
-from scipy.sparse import bsr_matrix, diags
-
+import numba as nb
+from numpy import ndarray, ma
+from numba import njit, prange
+from numba import types
+from scipy.sparse.csr import csr_matrix
+from scipy.sparse.lil import lil_matrix
 
 def gen_data(n_rows: int, n_classes: int, n_firms: int) -> np.ndarray:
     return np.array(
         [
-            np.random.randint(low=1, high=n_firms, size=n_rows, dtype=np.uint64),
-            np.random.randint(low=1, high=n_classes, size=n_rows, dtype=np.uint16),
-            np.random.randint(low=1950, high=2020, size=n_rows, dtype=np.uint16),
+            np.random.randint(low=1, high=n_firms, size=n_rows),
+            np.random.randint(low=1, high=n_classes, size=n_rows),
+            np.random.randint(low=1950, high=2020, size=n_rows),
         ]
     ).T
 
 @njit
-def zero_diag(array: bsr_matrix) -> bsr_matrix:
-    assert array.shape[0] == array.shape[1], "array must be square matrix"
-    for i in range(array.shape[0]):
-        array[i, i] = 0
-    return array
+def rnd(arr:ndarray, decimals:int) -> ndarray:
+    out = np.empty_like(arr)
+    return np.round_(arr, decimals, out)
 
 
-def tclass_corr(tech: int, var: bsr_matrix) -> bsr_matrix:
-    base_var = var.copy()
-    for i in range(tech):
-        for j in range(tech):
-            if base_var[i, i] == 0 or base_var[j, j] == 0:
-                continue
-            var[i, j] = var[i, j] / (np.sqrt(base_var[i, i]) * np.sqrt(base_var[j, j]))
+def tclass_corr(var: lil_matrix) -> lil_matrix:
+    # insertions in matrix should be on type "lil_matrix" -> + efficient
+    for i in range(var.shape[0]):
+        for j in range(var.shape[0]):
+            if var[i, i] == 0 or var[j, j] == 0: continue
+            var[i, j] = var[i, j] / (np.sqrt(var[i,i]) * np.sqrt(var[j,j]))
     return var
 
+def dot_zero(array_a: csr_matrix, array_b: csr_matrix) -> ndarray:
+    # arithmetic operations should be on type "csr_matrix" -> + efficient
+    dot_product : csr_matrix = np.dot(array_a, array_b)
+    rounded : csr_matrix = np.round(dot_product, decimals=2)
+    del dot_product
+    multiplied : csr_matrix = np.multiply(rounded, 100)
+    del rounded
+    multiplied.setdiag(0)
+    summed : ndarray = multiplied.sum(axis=1)
+    del multiplied
+    logged = ma.log(summed)
+    return np.array(logged).T.squeeze()
 
-def firm_corr(
-    num: int, tech: int, values: bsr_matrix, base_std: bsr_matrix
-) -> bsr_matrix:
-    norm_values = bsr_matrix(np.zeros(values.shape))
-    for j in range(tech):
-        for i in range(num):
-            if base_std[i, i] == 0:
-                continue
-            norm_values[i, j] = values[i, j] / np.sqrt(base_std[i, i])
-    return norm_values
 
+def compute(matrix: csr_matrix) -> tuple[np.ndarray, ...]:
+    values= csr_matrix((matrix / matrix.sum(axis=1)) * 100)
+    # compute matrix of correlations between classes (m x m)
+    
+    _var : csr_matrix = np.dot(values.T, values)
+    var = csr_matrix(tclass_corr(lil_matrix(_var)))
 
-def dot_zero(array_a: bsr_matrix, array_b: bsr_matrix) -> bsr_matrix:
-    dot_product = np.dot(array_a, array_b)
-    rounded = np.round(dot_product, decimals=2)
-    multiplied = np.multiply(rounded, 100)
-    zero_out = zero_diag(multiplied)
-    summed = zero_out.sum(axis=1)
-    logged = ma.log(summed).filled(0)
-    return logged
-
-def squeeze(matrix:np.matrix) -> np.ndarray:
-    return np.array(matrix).T.squeeze()
-
-def zero_squeeze(a:bsr_matrix, b:bsr_matrix) -> np.ndarray:
-    return squeeze(dot_zero(a,b))
-
-def compute(matrix: bsr_matrix, tech: int) -> tuple[np.ndarray, ...]:
-
-    # values= (matrix / total[:, None]) * 100
-    values = diags(1/matrix.sum(axis=1).A.ravel())
-    values = (values @ matrix) * 100
-
-    num = values.shape[0]
-
-    # compute matrix of correlations between classes
-    var = np.dot(values.T, values)
-    var = tclass_corr(tech, var)
-
-    # correlation between firms overs classes (n x n || 694x694)
-    base_std : bsr_matrix = np.dot(values, values.T)
-    norm_values = firm_corr(num, tech, values, base_std)
+    # correlation between firms overs classes (n x n)
+    norm_values = csr_matrix(values / np.sqrt(  np.dot(values, values.T).diagonal()    )[:, None] )
+    # base_std : csr_matrix = np.dot(values, values.T)
+    # norm_values = firm_corr(num, tech, values, base_std)
 
     # generate standard measures
-    std = zero_squeeze(norm_values, norm_values.T)
-    cov_std = zero_squeeze(values, values.T)
+    std = dot_zero(norm_values, norm_values.T)
+    cov_std = dot_zero(values, values.T)
 
     # generate MAHALANOBIS measure ==> gives n x n matrix
-    mal = zero_squeeze(np.dot(norm_values, var), norm_values.T)
-    cov_mal = zero_squeeze(np.dot(values, var), values.T)
+    mal = dot_zero(np.dot(norm_values, var), norm_values.T)
+    cov_mal = dot_zero(np.dot(values, var), values.T)
 
     return std, cov_std, mal, cov_mal

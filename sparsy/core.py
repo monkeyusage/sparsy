@@ -4,13 +4,13 @@ from typing import cast
 
 import numpy as np
 import pandas as pd
-from scipy.sparse import bsr_matrix
+from scipy.sparse.csr import csr_matrix
 
 from sparsy.numeric import compute
-from sparsy.utils import chunked_iterable
+from sparsy.utils import chunker
 
 
-def process(data: pd.DataFrame, config: dict[str, str | int]) -> None:
+def process(data: pd.DataFrame, config: dict[str, str | int], IO:bool=True) -> None:
 
     # sort by nclass and create a new tclass independant of naming of nclass just in case
     tclass_replacements = dict(
@@ -18,40 +18,42 @@ def process(data: pd.DataFrame, config: dict[str, str | int]) -> None:
     )
     data["tclass"] = data.nclass.replace(tclass_replacements)
 
-    years_groups: np.ndarray = data["year"].unique()
-    years_groups.sort()
-
-    size: int = cast(int, config["date_range"])
-    size = size if size > 0 else len(years_groups) + 1
+    iter_size: int = cast(int, config["iteration_size"])
 
     out_dir: str = cast(str, config["output_data"])
 
-    # iterate through year chunks
-    for years in chunked_iterable(years_groups, size):
-        dataframe = data[data["year"].isin(years)]
+    # iterate through n_sized chunks
+    data = data.sort_values("year")
 
+    for idx, data_chunk in enumerate(chunker(data, iter_size)):
         # crosstab on firm and class
-        i, firms = pd.factorize(dataframe["firm"])
-        j, _ = pd.factorize(dataframe["tclass"])
+        median_year = data_chunk["year"].median()
+        min_year = data_chunk["year"].min()
+        max_year = data_chunk["year"].max()
+
+        i, firms = pd.factorize(data_chunk["firm"])
+        j, _ = pd.factorize(data_chunk["tclass"])
         ij, tups = pd.factorize(list(zip(i, j)))
-        subsh = bsr_matrix((np.bincount(ij), tuple(zip(*tups))))
-
-        year: int = max(years)
+        subsh = csr_matrix((np.bincount(ij), tuple(zip(*tups))))
+        # cross = pd.crosstab(dataframe["firm"], dataframe["tclass"])
+        # subsh = cross.values
+        # firms = cross.index.values
         
-        std, cov_std, mal, cov_mal = compute(
-            matrix=subsh, tech=data["nclass"].nunique()
-        )
+        std, cov_std, mal, cov_mal = compute(subsh)
 
-        # df creation for further saving
-        df = pd.DataFrame(
-            {
-                "year": year,
-                "firm": firms,
-                "std": std,
-                "cov_std": cov_std,
-                "mal": mal,
-                "cov_mal": cov_mal,
-            }
-        )
-        # saving into memory
-        df.to_csv(f"{out_dir}/spill_{year}.tsv", sep="\t", index=False)
+        if IO:
+            # df creation for further saving
+            df = pd.DataFrame(
+                {
+                    "max_year" : max_year,
+                    "min_year": min_year,
+                    "median_year": median_year,
+                    "firm": firms,
+                    "std": std,
+                    "cov_std": cov_std,
+                    "mal": mal,
+                    "cov_mal": cov_mal,
+                }
+            )
+            # saving into memory
+            df.to_csv(f"{out_dir}/spill_{idx}.tsv", sep="\t", index=False)
