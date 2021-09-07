@@ -13,12 +13,18 @@ if not path.exists("data"):
     print("> did not find a data folder creating it")
     mkdir("data")
 
-    config = {
-        "input_data": "",
-        "output_data": "",
-        "date_range": 3,
-        "stress_test": False,
-    }
+config = {
+    "input_data": "data/data.tsv",
+    "output_data": "data/spills/output.tsv",
+    "iteration_size": 500,
+    "stress": {
+        "iteration_sizes": [5000, 10000],
+        "n_rows": [10000000],
+        "n_firms": [500000],
+        "n_classes": [6, 500],
+    },
+}
 
-    with open("data/config.json", "w") as config_file:
-        dump(config, config_file)
+print("overwriting/creating configurations file")
+with open("data/config.json", "w") as config_file:
+    dump(config, config_file, indent=4, sort_keys=True)

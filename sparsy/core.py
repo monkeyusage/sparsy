@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-from typing import cast
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from scipy.sparse.csr import csr_matrix
+from tqdm import tqdm
 
 from sparsy.numeric import compute
 from sparsy.utils import chunker
 
 
-def process(data: pd.DataFrame, config: dict[str, str | int], IO:bool=True) -> None:
+def process(data: pd.DataFrame, iter_size: int, outfile: Path, IO: bool = True) -> None:
 
     # sort by nclass and create a new tclass independant of naming of nclass just in case
     tclass_replacements = dict(
@@ -18,14 +19,10 @@ def process(data: pd.DataFrame, config: dict[str, str | int], IO:bool=True) -> N
     )
     data["tclass"] = data.nclass.replace(tclass_replacements)
 
-    iter_size: int = cast(int, config["iteration_size"])
-
-    out_dir: str = cast(str, config["output_data"])
-
     # iterate through n_sized chunks
     data = data.sort_values("year")
 
-    for idx, data_chunk in enumerate(chunker(data, iter_size)):
+    for idx, data_chunk in tqdm(enumerate(chunker(data, iter_size))):
         # crosstab on firm and class
         median_year = data_chunk["year"].median()
         min_year = data_chunk["year"].min()
@@ -35,25 +32,23 @@ def process(data: pd.DataFrame, config: dict[str, str | int], IO:bool=True) -> N
         j, _ = pd.factorize(data_chunk["tclass"])
         ij, tups = pd.factorize(list(zip(i, j)))
         subsh = csr_matrix((np.bincount(ij), tuple(zip(*tups))))
-        # cross = pd.crosstab(dataframe["firm"], dataframe["tclass"])
-        # subsh = cross.values
-        # firms = cross.index.values
-        
+
         std, cov_std, mal, cov_mal = compute(subsh)
 
         if IO:
             # df creation for further saving
             df = pd.DataFrame(
                 {
-                    "max_year" : max_year,
+                    "firm": firms,
+                    "max_year": max_year,
                     "min_year": min_year,
                     "median_year": median_year,
-                    "firm": firms,
                     "std": std,
                     "cov_std": cov_std,
                     "mal": mal,
                     "cov_mal": cov_mal,
                 }
             )
-            # saving into memory
-            df.to_csv(f"{out_dir}/spill_{idx}.tsv", sep="\t", index=False)
+            # saving into memory into tmp.tsv files
+            tmpfile = outfile.parent / f"{idx}_tmp.tsv"
+            df.to_csv(tmpfile, sep="\t", index=False)

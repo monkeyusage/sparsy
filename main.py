@@ -4,6 +4,7 @@ Parsy is a program that computes various distances between companies' caraterist
 from __future__ import annotations
 
 from json import load
+from pathlib import Path
 from time import perf_counter
 from typing import cast
 
@@ -19,14 +20,17 @@ def main() -> None:
         config: dict[str, str | int] = load(config_file)
 
     input_file: str = cast(str, config["input_data"])
+    iter_size = cast(int, config["iteration_size"])
+    outfile = Path(cast(str, config["output_data"]))
+
     data: pd.DataFrame = pd.read_csv(
         input_file,
         sep="\t",
         usecols=["firm", "nclass", "year"],
-        dtype={"firm": np.uint32, "nclass": "category", "year": np.uint16},
+        dtype={"firm": np.uint64, "nclass": "category", "year": np.uint16},
     )
-    process(data, config)
-    clean_up()
+    process(data, iter_size, outfile)
+    clean_up(outfile)
 
 
 if __name__ == "__main__":
