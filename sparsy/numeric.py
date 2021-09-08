@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 import numpy as np
 from numpy import ma, ndarray
 from scipy.sparse.csr import csr_matrix
@@ -17,7 +19,7 @@ def gen_data(n_rows: int, n_classes: int, n_firms: int) -> np.ndarray:
 
 
 def tclass_corr(var: lil_matrix) -> lil_matrix:
-    # insertions in matrix should be on type "lil_matrix" -> + efficient
+    # insertions in sparse matrix should be on type "lil_matrix" -> + efficient
     for i in range(var.shape[0]):
         for j in range(var.shape[0]):
             if var[i, i] == 0 or var[j, j] == 0:
@@ -31,7 +33,7 @@ def dot_zero(array_a: csr_matrix, array_b: csr_matrix) -> ndarray:
     dot_product: csr_matrix = np.dot(array_a, array_b)
     rounded: csr_matrix = np.round(dot_product, decimals=2)
     del dot_product
-    multiplied: csr_matrix = rounded * 100
+    multiplied: csr_matrix = cast(csr_matrix, rounded * 100)
     del rounded
     multiplied.setdiag(0)
     summed: ndarray = multiplied.sum(axis=1)
@@ -51,8 +53,6 @@ def compute(matrix: csr_matrix) -> tuple[np.ndarray, ...]:
     norm_values = csr_matrix(
         values / np.sqrt(np.dot(values, values.T).diagonal())[:, None]
     )
-    # base_std : csr_matrix = np.dot(values, values.T)
-    # norm_values = firm_corr(num, tech, values, base_std)
 
     # generate standard measures
     std = dot_zero(norm_values, norm_values.T)

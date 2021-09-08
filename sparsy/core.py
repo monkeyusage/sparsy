@@ -1,4 +1,5 @@
 from __future__ import annotations
+from io import IncrementalNewlineDecoder
 
 from pathlib import Path
 
@@ -12,7 +13,6 @@ from sparsy.utils import chunker
 
 
 def process(data: pd.DataFrame, iter_size: int, outfile: Path, IO: bool = True) -> None:
-
     # sort by nclass and create a new tclass independant of naming of nclass just in case
     tclass_replacements = dict(
         (k, v) for k, v in zip(data.nclass.unique(), range(data.nclass.nunique()))
@@ -21,12 +21,12 @@ def process(data: pd.DataFrame, iter_size: int, outfile: Path, IO: bool = True) 
 
     # iterate through n_sized chunks
     data = data.sort_values("year")
+    years : list[int] = data["year"].unique().tolist()
 
-    for idx, data_chunk in tqdm(enumerate(chunker(data, iter_size))):
+    for year_set in tqdm(chunker(years, iter_size)):
+        data_chunk = data[data["year"].isin(set(year_set))]
         # crosstab on firm and class
-        median_year = data_chunk["year"].median()
-        min_year = data_chunk["year"].min()
-        max_year = data_chunk["year"].max()
+        year = min(year_set)
 
         i, firms = pd.factorize(data_chunk["firm"])
         j, _ = pd.factorize(data_chunk["tclass"])
@@ -40,9 +40,7 @@ def process(data: pd.DataFrame, iter_size: int, outfile: Path, IO: bool = True) 
             df = pd.DataFrame(
                 {
                     "firm": firms,
-                    "max_year": max_year,
-                    "min_year": min_year,
-                    "median_year": median_year,
+                    "max_year": year,
                     "std": std,
                     "cov_std": cov_std,
                     "mal": mal,
@@ -50,5 +48,5 @@ def process(data: pd.DataFrame, iter_size: int, outfile: Path, IO: bool = True) 
                 }
             )
             # saving into memory into tmp.tsv files
-            tmpfile = outfile.parent / f"{idx}_tmp.tsv"
+            tmpfile = outfile.parent / f"{year}_tmp.tsv"
             df.to_csv(tmpfile, sep="\t", index=False)

@@ -2,16 +2,18 @@ from __future__ import annotations
 
 from os import listdir, remove
 from pathlib import Path
-from typing import Iterator, TypeVar
+from typing import Iterator, Sequence, TypeVar
 
 import pandas as pd
 
 T = TypeVar("T")
-
-
-def chunker(seq: pd.DataFrame, size: int) -> Iterator[pd.DataFrame]:
-    size = size if size > 0 else len(seq) + 1
-    return (seq.iloc[pos : pos + size] for pos in range(0, len(seq), size))
+def chunker(seq: Sequence[T], size: int) -> Iterator[Sequence[T]]:
+    l = len(seq)
+    if size < 0:
+        yield seq
+        return
+    for idx in range(0, l, size):
+        yield seq[idx:min(idx + size, l)]
 
 
 def clean_up(out_file: Path) -> None:
