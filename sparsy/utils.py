@@ -7,13 +7,15 @@ from typing import Iterator, Sequence, TypeVar
 import pandas as pd
 
 T = TypeVar("T")
+
+
 def chunker(seq: Sequence[T], size: int) -> Iterator[Sequence[T]]:
     l = len(seq)
     if size < 0:
         yield seq
         return
     for idx in range(0, l, size):
-        yield seq[idx:min(idx + size, l)]
+        yield seq[idx : min(idx + size, l)]
 
 
 def clean_up(out_file: Path) -> None:

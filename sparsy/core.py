@@ -1,5 +1,4 @@
 from __future__ import annotations
-from io import IncrementalNewlineDecoder
 
 from pathlib import Path
 
@@ -21,7 +20,7 @@ def process(data: pd.DataFrame, iter_size: int, outfile: Path, IO: bool = True) 
 
     # iterate through n_sized chunks
     data = data.sort_values("year")
-    years : list[int] = data["year"].unique().tolist()
+    years: list[int] = data["year"].unique().tolist()
 
     for year_set in tqdm(chunker(years, iter_size)):
         data_chunk = data[data["year"].isin(set(year_set))]
