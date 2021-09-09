@@ -23,12 +23,7 @@ def main() -> None:
     iter_size = cast(int, config["iteration_size"])
     outfile = Path(cast(str, config["output_data"]))
 
-    data: pd.DataFrame = pd.read_stata(
-        input_file,
-        # sep="\t",
-        # usecols=["firm", "nclass", "year"],
-        # dtype={"firm": np.uint64, "nclass": "category", "year": np.uint16},
-    )
+    data: pd.DataFrame = pd.read_stata(input_file)
     data = data[["firm", "nclass", "year"]]
     data["year"] = data["year"].astype(np.uint16)
 

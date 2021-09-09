@@ -9,6 +9,9 @@ from scipy.sparse.lil import lil_matrix
 
 
 def gen_data(n_rows: int, n_classes: int, n_firms: int) -> np.ndarray:
+    """
+    This functions creates a synthetic dataset for stress testing
+    """
     return np.array(
         [
             np.random.randint(low=1, high=n_firms, size=n_rows),

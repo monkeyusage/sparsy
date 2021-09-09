@@ -1,3 +1,4 @@
+"""Use this file to run stress tests"""
 from __future__ import annotations
 
 from itertools import product
