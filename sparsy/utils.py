@@ -10,6 +10,12 @@ T = TypeVar("T")
 
 
 def chunker(seq: Sequence[T], size: int) -> Iterator[Sequence[T]]:
+    """
+    cuts sequence in n sized sequences and stops when len(sub_sequence) < size
+    >>> l = list(range(10))
+    >>> print(list(chunker(l, 3)))
+    >>> [[0, 1, 2], [1, 2, 3], [2, 3, 4], ..., [7, 8, 9]]
+    """
     l = len(seq)
     if size < 0:
         yield seq

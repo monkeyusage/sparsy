@@ -12,13 +12,15 @@ result = system(r".\venv\Scripts\activate && python -m pip install -r requiremen
 if not path.exists("data"):
     print("> did not find a data folder creating it")
     mkdir("data")
+    if not path.exists("data/spills"):
+        mkdir("data/spills")
 
 config = {
-    "input_data": "data/data.tsv",
-    "output_data": "data/spills/output.tsv",
-    "iteration_size": 500,
+    "input_data": "data/data.dta",
+    "output_data": "data/spills/output.dta",
+    "iteration_size": 3,
     "stress": {
-        "iteration_sizes": [5000, 10000],
+        "iteration_sizes": [3, 5],
         "n_rows": [10000000],
         "n_firms": [500000],
         "n_classes": [6, 500],

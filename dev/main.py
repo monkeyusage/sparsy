@@ -14,6 +14,10 @@ import pandas as pd
 from sparsy.core import process
 from sparsy.utils import clean_up
 
+from sys import path
+
+path.append(".")
+
 
 def main() -> None:
     with open("data/config.json", "r") as config_file:
