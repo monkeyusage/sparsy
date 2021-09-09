@@ -14,8 +14,12 @@ def chunker(seq: Sequence[T], size: int) -> Iterator[Sequence[T]]:
     if size < 0:
         yield seq
         return
-    for idx in range(0, l, size):
-        yield seq[idx : min(idx + size, l)]
+    for idx in range(0, l):
+        out = seq[idx : min(idx + size, l)]
+        if len(out) == size:
+            yield out
+        else:
+            return
 
 
 def clean_up(out_file: Path) -> None:
@@ -35,7 +39,7 @@ def clean_up(out_file: Path) -> None:
         dfs.append(df)
     out_df = pd.concat(dfs, ignore_index=True)
     out_df = out_df.sort_values("firm")
-    out_df.to_csv(out_file, sep="\t", index=False)
+    out_df.to_stata(out_file)
 
     # delete the spill files
     for file in listdir(f"{out_file.parent}"):

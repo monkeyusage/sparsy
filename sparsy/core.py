@@ -20,12 +20,14 @@ def process(data: pd.DataFrame, iter_size: int, outfile: Path, IO: bool = True) 
 
     # iterate through n_sized chunks
     data = data.sort_values("year")
-    years: list[int] = data["year"].unique().tolist()
+    years: list[int] = list(range(data["year"].min(), data["year"].max() + 1))
 
     for year_set in tqdm(chunker(years, iter_size)):
         data_chunk = data[data["year"].isin(set(year_set))]
+        if data_chunk.empty:
+            continue
         # crosstab on firm and class
-        year = min(year_set)
+        year = max(year_set)
 
         i, firms = pd.factorize(data_chunk["firm"])
         j, _ = pd.factorize(data_chunk["tclass"])
@@ -39,11 +41,11 @@ def process(data: pd.DataFrame, iter_size: int, outfile: Path, IO: bool = True) 
             df = pd.DataFrame(
                 {
                     "firm": firms,
-                    "max_year": year,
-                    "std": std,
-                    "cov_std": cov_std,
-                    "mal": mal,
-                    "cov_mal": cov_mal,
+                    "year": year,
+                    "spilltec": std,
+                    "spillcovtec": cov_std,
+                    "spillmaltec": mal,
+                    "spillmalcovtec": cov_mal,
                 }
             )
             # saving into memory into tmp.tsv files
