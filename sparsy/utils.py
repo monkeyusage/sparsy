@@ -28,7 +28,7 @@ def chunker(seq: Sequence[T], size: int) -> Iterator[Sequence[T]]:
             return
 
 
-def clean_up(out_file: Path) -> None:
+def reduce_data(out_file: Path) -> None:
     # if an out_df.tsv already exists we delete it and replace it
     # we remove the temp files once we have replace the out_df file
     if out_file.exists():

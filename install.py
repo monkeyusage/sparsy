@@ -19,6 +19,7 @@ config = {
     "input_data": "data/data.dta",
     "output_data": "data/spills/output.dta",
     "iteration_size": 3,
+    "n_cores":0,
     "stress": {
         "iteration_sizes": [3, 5],
         "n_rows": [10000000],
