@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import cast
 
 import numpy as np
+from numpy import linalg
 from numpy import ma, ndarray
 from scipy.sparse.csr import csr_matrix
 from scipy.sparse.lil import lil_matrix
@@ -23,11 +24,12 @@ def gen_data(n_rows: int, n_classes: int, n_firms: int) -> np.ndarray:
 
 def tclass_corr(var: lil_matrix) -> lil_matrix:
     # insertions in sparse matrix should be on type "lil_matrix" -> + efficient
+    base_var = var.copy()
     for i in range(var.shape[0]):
         for j in range(var.shape[0]):
             if var[i, i] == 0 or var[j, j] == 0:
                 continue
-            var[i, j] = var[i, j] / (np.sqrt(var[i, i]) * np.sqrt(var[j, j]))
+            var[i, j] = var[i, j] / (np.sqrt(base_var[i, i]) * np.sqrt(base_var[j, j]))
     return var
 
 
@@ -41,8 +43,9 @@ def dot_zero(array_a: csr_matrix, array_b: csr_matrix) -> ndarray:
     multiplied.setdiag(0)
     summed: ndarray = multiplied.sum(axis=1)
     del multiplied
-    logged = ma.log(summed)
-    return np.array(logged).T.squeeze()
+    #logged = ma.log(summed)
+    #return np.array(logged).T.squeeze()
+    return np.array(summed).T.squeeze()
 
 
 def compute(matrix: csr_matrix) -> tuple[np.ndarray, ...]:
@@ -62,7 +65,7 @@ def compute(matrix: csr_matrix) -> tuple[np.ndarray, ...]:
     cov_std = dot_zero(values, values.T)
 
     # generate MAHALANOBIS measure ==> gives n x n matrix
-    mal = dot_zero(np.dot(norm_values, var), norm_values.T)
-    cov_mal = dot_zero(np.dot(values, var), values.T)
+    mal = dot_zero(norm_values, np.dot(var, norm_values.T))
+    cov_mal = dot_zero(values, np.dot(var, values.T))
 
     return std, cov_std, mal, cov_mal

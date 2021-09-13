@@ -27,7 +27,7 @@ def main() -> None:
     iter_size = cast(int, config["iteration_size"])
     cores = cast(int, config["n_cores"])
 
-    data: pd.DataFrame = pd.read_stata(input_file)
+    data: pd.DataFrame = pd.read_stata(input_file) if input_file.endswith(".dta") else pd.read_csv(input_file, sep="\t")
     data = data[["firm", "nclass", "year"]]
     data["year"] = data["year"].astype(np.uint16)
 
