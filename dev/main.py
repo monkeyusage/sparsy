@@ -5,13 +5,13 @@ from __future__ import annotations
 
 from json import load
 from pathlib import Path
+from sys import path
 from time import perf_counter
 from typing import cast
 
 import numpy as np
 import pandas as pd
 
-from sys import path
 path.append(".")
 
 from sparsy.core import core
@@ -27,11 +27,17 @@ def main() -> None:
     iter_size = cast(int, config["iteration_size"])
     cores = cast(int, config["n_cores"])
 
-    data: pd.DataFrame = pd.read_stata(input_file) if input_file.endswith(".dta") else pd.read_csv(input_file, sep="\t")
+    data: pd.DataFrame = (
+        pd.read_stata(input_file)
+        if input_file.endswith(".dta")
+        else pd.read_csv(input_file, sep="\t")
+    )
     data = data[["firm", "nclass", "year"]]
     data["year"] = data["year"].astype(np.uint16)
 
-    print(f"Computing with configurations: {input_file=}, {outfile=}, {iter_size=}, {cores=}")
+    print(
+        f"Computing with configurations: {input_file=}, {outfile=}, {iter_size=}, {cores=}"
+    )
     core(data, iter_size, outfile, cores)
     reduce_data(outfile)
 

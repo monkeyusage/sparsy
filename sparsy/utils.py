@@ -45,7 +45,9 @@ def reduce_data(out_file: Path) -> None:
         dfs.append(df)
     out_df = pd.concat(dfs, ignore_index=True)
     out_df = out_df.sort_values("firm")
-    out_df.to_stata(out_file) if out_file.name.endswith(".dta") else out_df.to_csv(out_file, sep="\t", index=False)
+    out_df.to_stata(out_file) if out_file.name.endswith(".dta") else out_df.to_csv(
+        out_file, sep="\t", index=False
+    )
 
     # delete the spill files
     for file in listdir(f"{out_file.parent}"):

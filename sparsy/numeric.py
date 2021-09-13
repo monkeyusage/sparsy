@@ -3,8 +3,7 @@ from __future__ import annotations
 from typing import cast
 
 import numpy as np
-from numpy import linalg
-from numpy import ma, ndarray
+from numpy import linalg, ma, ndarray
 from scipy.sparse.csr import csr_matrix
 from scipy.sparse.lil import lil_matrix
 
@@ -43,8 +42,8 @@ def dot_zero(array_a: csr_matrix, array_b: csr_matrix) -> ndarray:
     multiplied.setdiag(0)
     summed: ndarray = multiplied.sum(axis=1)
     del multiplied
-    #logged = ma.log(summed)
-    #return np.array(logged).T.squeeze()
+    # logged = ma.log(summed)
+    # return np.array(logged).T.squeeze()
     return np.array(summed).T.squeeze()
 
 
