@@ -2,12 +2,10 @@ from __future__ import annotations
 
 import logging
 from time import perf_counter
-from typing import cast
 
 import numpy as np
 from numpy import ndarray
-from scipy.sparse.csr import csr_matrix
-from scipy.sparse.lil import lil_matrix
+from numba import njit
 
 from sparsy.utils import extract_type, get_memory_usage
 
@@ -26,9 +24,10 @@ def gen_data(n_rows: int, n_classes: int, n_firms: int) -> np.ndarray:
     ).T
 
 
-def tclass_corr(var: lil_matrix) -> lil_matrix:
+def tclass_corr(values: ndarray) -> ndarray:
     logging.info("computing tclass correlation matrix")
     # insertions in sparse matrix should be on type "lil_matrix" -> + efficient
+    var = np.dot(values.T, values)
     base_var = var.copy()
     for i in range(var.shape[0]):
         for j in range(var.shape[0]):
@@ -37,59 +36,55 @@ def tclass_corr(var: lil_matrix) -> lil_matrix:
             var[i, j] = var[i, j] / (np.sqrt(base_var[i, i]) * np.sqrt(base_var[j, j]))
     return var
 
+@njit
+def dot_zero(matrix: ndarray) -> ndarray:
+    out = matrix.dot(matrix.T)
+    out= np.round(out, decimals=2) * 100
+    out.setdiag(0)
+    out = out.sum(axis=1)
+    return out
 
-def dot_zero(array_a: csr_matrix, array_b: csr_matrix) -> ndarray:
-    logging.info("computing dot zero for shapes : %s, %s", array_a.shape, array_b.shape)
-    t0 = perf_counter()
-    # arithmetic operations should be on type "csr_matrix" -> + efficient
-    dot_product: csr_matrix = np.dot(array_a, array_b)
-    rounded: csr_matrix = np.round(dot_product, decimals=2)
-    del dot_product
-    multiplied: csr_matrix = cast(csr_matrix, rounded * 100)
-    del rounded
-    multiplied.setdiag(0)
-    summed: ndarray = multiplied.sum(axis=1)
-    del multiplied
-    t1 = perf_counter()
-    logging.info("operation took %s seconds", t1 - t0)
-    logging.info(
-        "memory needed to hold array %s bytes", summed.shape[0] * extract_type(summed.dtype)
-    )
-    return np.array(summed, dtype=np.float32).T.squeeze()
+@njit
+def mahalanobis(biggie:ndarray, small:ndarray) -> ndarray:
+    out = biggie.dot(small.dot(biggie.T))
+    out = np.round(out, decimals=2) * 100
+    out.setdiag(0)
+    out = out.sum(axis=1)
+    return out
 
 
-def compute(matrix: csr_matrix) -> tuple[np.ndarray, ...]:
+def compute(matrix: ndarray) -> tuple[np.ndarray, ...]:
     logging.info("entering core computing intensive function")
     logging.info(
-        "matrix shape is %s, originally containing %s, taking about %s bytes",
+        "matrix shape is %s, taking about %s bytes",
         matrix.shape,
-        matrix.nnz,
-        matrix.nnz * extract_type(matrix.dtype),
+        matrix.shape[0] * extract_type(matrix.dtype),
     )
-    values = csr_matrix((matrix / matrix.sum(axis=1)) * 100, dtype=np.float32)
+    values : ndarray = (matrix / matrix.sum(axis=1)) * 100
     # compute matrix of correlations between classes (m x m)
 
-    _var: csr_matrix = np.dot(values.T, values)
-    var = csr_matrix(tclass_corr(lil_matrix(_var)))
+    var = tclass_corr(values)
 
     # correlation between firms overs classes (n x n)
     logging.info("most cpu intensive tasks now")
-    norm_values = csr_matrix(
-        values / np.sqrt(np.dot(values, values.T).diagonal())[:, None], dtype=np.float32
-    )
+    
+    norm_values = values / np.sqrt(np.dot(values, values.T).diagonal())[:, None]
+
     logging.info(
-        "norm_values shape is %s, containing %s elements, taking about %s bytes",
+        "norm_values shape is %s, taking about %s bytes",
         norm_values.shape,
-        norm_values.nnz,
-        norm_values.nnz * extract_type(norm_values.dtype),
+        norm_values.shape[0] * extract_type(norm_values.dtype),
     )
+
     # generate standard measures
-    std = dot_zero(norm_values, norm_values.T)
-    cov_std = dot_zero(values, values.T)
+    std = dot_zero(norm_values)
+    cov_std = dot_zero(values)
 
     # generate MAHALANOBIS measure ==> gives n x n matrix
-    mal = dot_zero(norm_values, np.dot(var, norm_values.T))
-    cov_mal = dot_zero(values, np.dot(var, values.T))
+
+    # this one is wrong
+    mal = mahalanobis(norm_values, var)
+    cov_mal = mahalanobis(values, var)
 
     logging.info("Memory used in MB: %s", get_memory_usage())
     return std, cov_std, mal, cov_mal

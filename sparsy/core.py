@@ -7,7 +7,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from scipy.sparse.csr import csr_matrix
 from tqdm import tqdm
 
 from sparsy.numeric import compute
@@ -16,20 +15,19 @@ from sparsy.utils import chunker
 
 def preprocess(
     dataframe: pd.DataFrame, sub_years: list[int]
-) -> tuple[int, np.ndarray, csr_matrix] | None:
+) -> tuple[np.ndarray, np.ndarray] | None:
     data_chunk = dataframe[dataframe["year"].isin(set(sub_years))]
     if data_chunk.empty:
         return None
     # crosstab on firm and class
-    year: int = max(sub_years)
     firms: np.ndarray
-    subsh: csr_matrix
+    subsh: np.ndarray
 
     i, firms = pd.factorize(data_chunk["firm"])
     j, _ = pd.factorize(data_chunk["tclass"])
     ij, tups = pd.factorize(list(zip(i, j)))
-    subsh = csr_matrix((np.bincount(ij), tuple(zip(*tups))), dtype=np.float32)
-    return year, firms, subsh
+    subsh = np.array((np.bincount(ij), tuple(zip(*tups))), dtype=np.float32)
+    return firms, subsh
 
 
 def post_process(
@@ -62,26 +60,14 @@ def process(
     sub_data = preprocess(data, year_set)
     if sub_data is None:
         return
-    year, firms, subsh = sub_data
+    year = max(year_set)
+    firms, subsh = sub_data
 
-    stds, cov_stds, mals, cov_mals = [], [], [], []
-    i = 0
-    while i < subsh.shape[0]:
-        std, cov_std, mal, cov_mal = compute(subsh[i : i + matrix_iteration])
-        i += matrix_iteration
-        if outfile != Path(""):
-            stds.append(std)
-            cov_stds.append(cov_std)
-            mals.append(mal)
-            cov_mals.append(cov_mal)
+    std, cov_std, mal, cov_mal = compute(subsh)
 
     if outfile != Path(""):
         # df creation for further saving
-        stds = np.concatenate(stds)
-        cov_stds = np.concatenate(cov_stds)
-        mals = np.concatenate(mals)
-        cov_mals = np.concatenate(cov_mals)
-        post_process(firms, year, stds, cov_stds, mals, cov_mals, outfile)
+        post_process(firms, year, std, cov_std, mal, cov_mal, outfile)
 
 
 def core(data: pd.DataFrame, iter_size: int, matrix_iteration:int, outfile: Path, cores: int = 0) -> None:
