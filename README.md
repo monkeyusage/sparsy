@@ -14,7 +14,7 @@ Mention the file names in their dedicated sections. This software takes in dta f
 
 Pay attention to indicate an output folder that is specific to your data output. The script will create temporary files, concatenate them, save the output and delete the temp files. If the software crashes during execution, for any reason, you might end up with lots of files in your directory and cleaning them by hand could get tedious. So just use a specific folder for the output however you might call the file.
 
-If you want to process the whole data in one pass simply insert a negative number in the iteration_size configuation. Iteration_size corresponds to the number of years to include each iteration.
+If you want to process the whole data in one pass simply insert a negative number in the `year_iteration` configuation. `year_iteration` corresponds to the number of years to include each iteration. You can also split each matrix into multiple submatrices in order to relieve the computer from `n**2` memory usage. Set this number in the `matrix_iteration` value in the config.json.
 
 For this project we optimised for memory size. This means the code could run faster but it would require bigger mem size.
 Choosing bigger itersize will not likely increase the execution speed. Quite the converse.
