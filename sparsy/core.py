@@ -57,7 +57,7 @@ def post_process(
 
 
 def process(
-    data: pd.DataFrame, year_set: list[int], outfile: Path, IO: bool = True
+    data: pd.DataFrame, year_set: list[int], matrix_iteration: int, outfile: Path
 ) -> None:
     sub_data = preprocess(data, year_set)
     if sub_data is None:
@@ -65,18 +65,17 @@ def process(
     year, firms, subsh = sub_data
 
     stds, cov_stds, mals, cov_mals = [], [], [], []
-    ITER_SIZE = 5000
     i = 0
     while i < subsh.shape[0]:
-        std, cov_std, mal, cov_mal = compute(subsh[i : i + ITER_SIZE])
-        i += ITER_SIZE
-        if IO and outfile != Path(""):
+        std, cov_std, mal, cov_mal = compute(subsh[i : i + matrix_iteration])
+        i += matrix_iteration
+        if outfile != Path(""):
             stds.append(std)
             cov_stds.append(cov_std)
             mals.append(mal)
             cov_mals.append(cov_mal)
 
-    if IO and outfile != Path(""):
+    if outfile != Path(""):
         # df creation for further saving
         stds = np.concatenate(stds)
         cov_stds = np.concatenate(cov_stds)
@@ -85,7 +84,7 @@ def process(
         post_process(firms, year, stds, cov_stds, mals, cov_mals, outfile)
 
 
-def core(data: pd.DataFrame, iter_size: int, outfile: Path, cores: int = 0) -> None:
+def core(data: pd.DataFrame, iter_size: int, matrix_iteration:int, outfile: Path, cores: int = 0) -> None:
     # sort by nclass and create a new tclass independant of naming of nclass just in case
     tclass_replacements = dict(
         (k, v) for k, v in zip(data.nclass.unique(), range(data.nclass.nunique()))
@@ -102,10 +101,10 @@ def core(data: pd.DataFrame, iter_size: int, outfile: Path, cores: int = 0) -> N
         logging.info("launching main process on one process")
         for year_set in tqdm(chunker(years, iter_size)):
             logging.info("processing data using year: %s", year_set)
-            process(data, year_set, outfile)
+            process(data, year_set, matrix_iteration, outfile)
     else:
         logging.info("launching main process")
         years_sets = list(chunker(years, iter_size))
-        process_years = partial(process, data, outfile=outfile)
+        process_years = partial(process, data, outfile=outfile, matrix_iteration=matrix_iteration)
         with Pool(cores) as p:
             p.map(process_years, years_sets)

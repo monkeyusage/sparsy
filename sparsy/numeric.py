@@ -43,14 +43,12 @@ def dot_zero(array_a: csr_matrix, array_b: csr_matrix) -> ndarray:
     t0 = perf_counter()
     # arithmetic operations should be on type "csr_matrix" -> + efficient
     dot_product: csr_matrix = np.dot(array_a, array_b)
-    logging.info("current mem mb count %s", get_memory_usage())
     rounded: csr_matrix = np.round(dot_product, decimals=2)
     del dot_product
     multiplied: csr_matrix = cast(csr_matrix, rounded * 100)
     del rounded
     multiplied.setdiag(0)
     summed: ndarray = multiplied.sum(axis=1)
-    logging.info("current mem mb count %s", get_memory_usage())
     del multiplied
     t1 = perf_counter()
     logging.info("operation took %s seconds", t1 - t0)
@@ -90,10 +88,8 @@ def compute(matrix: csr_matrix) -> tuple[np.ndarray, ...]:
     cov_std = dot_zero(values, values.T)
 
     # generate MAHALANOBIS measure ==> gives n x n matrix
-    print(f"{get_memory_usage()} MB in the current process")
-    logging.info("current mem mb count %s", get_memory_usage())
     mal = dot_zero(norm_values, np.dot(var, norm_values.T))
-    logging.info("current mem mb count %s", get_memory_usage())
     cov_mal = dot_zero(values, np.dot(var, values.T))
 
+    logging.info("current mem mb count %s", get_memory_usage())
     return std, cov_std, mal, cov_mal
