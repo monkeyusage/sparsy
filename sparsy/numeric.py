@@ -53,7 +53,7 @@ def dot_zero(array_a: csr_matrix, array_b: csr_matrix) -> ndarray:
     t1 = perf_counter()
     logging.info("operation took %s seconds", t1 - t0)
     logging.info(
-        "memory needed to hold array %s", summed.shape[0] * extract_type(summed.dtype)
+        "memory needed to hold array %s bytes", summed.shape[0] * extract_type(summed.dtype)
     )
     return np.array(summed, dtype=np.float32).T.squeeze()
 
@@ -78,7 +78,7 @@ def compute(matrix: csr_matrix) -> tuple[np.ndarray, ...]:
         values / np.sqrt(np.dot(values, values.T).diagonal())[:, None], dtype=np.float32
     )
     logging.info(
-        "norm_values shape is %s, containing %s, taking about %s bytes",
+        "norm_values shape is %s, containing %s elements, taking about %s bytes",
         norm_values.shape,
         norm_values.nnz,
         norm_values.nnz * extract_type(norm_values.dtype),
@@ -91,5 +91,5 @@ def compute(matrix: csr_matrix) -> tuple[np.ndarray, ...]:
     mal = dot_zero(norm_values, np.dot(var, norm_values.T))
     cov_mal = dot_zero(values, np.dot(var, values.T))
 
-    logging.info("current mem mb count %s", get_memory_usage())
+    logging.info("Memory used in MB: %s", get_memory_usage())
     return std, cov_std, mal, cov_mal
