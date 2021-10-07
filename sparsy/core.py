@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from functools import partial
 from multiprocessing import Pool
 from pathlib import Path
@@ -27,7 +28,7 @@ def preprocess(
     i, firms = pd.factorize(data_chunk["firm"])
     j, _ = pd.factorize(data_chunk["tclass"])
     ij, tups = pd.factorize(list(zip(i, j)))
-    subsh = csr_matrix((np.bincount(ij), tuple(zip(*tups))))
+    subsh = csr_matrix((np.bincount(ij), tuple(zip(*tups))), dtype=np.float32)
     return year, firms, subsh
 
 
@@ -62,11 +63,26 @@ def process(
     if sub_data is None:
         return
     year, firms, subsh = sub_data
-    std, cov_std, mal, cov_mal = compute(subsh)
 
-    if IO:
+    stds, cov_stds, mals, cov_mals = [], [], [], []
+    ITER_SIZE = 5000
+    i = 0
+    while i < subsh.shape[0]:
+        std, cov_std, mal, cov_mal = compute(subsh[i : i + ITER_SIZE])
+        i += ITER_SIZE
+        if IO and outfile != Path(""):
+            stds.append(std)
+            cov_stds.append(cov_std)
+            mals.append(mal)
+            cov_mals.append(cov_mal)
+
+    if IO and outfile != Path(""):
         # df creation for further saving
-        post_process(firms, year, std, cov_std, mal, cov_mal, outfile)
+        stds = np.concatenate(stds)
+        cov_stds = np.concatenate(cov_stds)
+        mals = np.concatenate(mals)
+        cov_mals = np.concatenate(cov_mals)
+        post_process(firms, year, stds, cov_stds, mals, cov_mals, outfile)
 
 
 def core(data: pd.DataFrame, iter_size: int, outfile: Path, cores: int = 0) -> None:
@@ -74,16 +90,21 @@ def core(data: pd.DataFrame, iter_size: int, outfile: Path, cores: int = 0) -> N
     tclass_replacements = dict(
         (k, v) for k, v in zip(data.nclass.unique(), range(data.nclass.nunique()))
     )
+    logging.info("replacing nclass by tclass")
     data["tclass"] = data.nclass.replace(tclass_replacements)
 
     # iterate through n_sized chunks
+    logging.info("sorting years")
     data = data.sort_values("year")
     years: list[int] = list(range(data["year"].min(), data["year"].max() + 1))
 
     if cores == 0:
+        logging.info("launching main process on one process")
         for year_set in tqdm(chunker(years, iter_size)):
+            logging.info("processing data using year: %s", year_set)
             process(data, year_set, outfile)
     else:
+        logging.info("launching main process")
         years_sets = list(chunker(years, iter_size))
         process_years = partial(process, data, outfile=outfile)
         with Pool(cores) as p:

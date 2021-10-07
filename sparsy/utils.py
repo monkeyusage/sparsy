@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from os import listdir, remove
+from os import getpid, listdir, remove
 from pathlib import Path
 from typing import Iterator, Sequence, TypeVar
 
+import numpy as np
 import pandas as pd
+from psutil import Process
 
 T = TypeVar("T")
 
@@ -26,6 +28,15 @@ def chunker(seq: Sequence[T], size: int) -> Iterator[Sequence[T]]:
             yield out
         else:
             return
+
+
+def extract_type(dtype: np.dtype) -> int:
+    return int(dtype.name.replace("float", "").replace("int", ""))
+
+
+def get_memory_usage() -> int:
+    """return python process memory usage in megabytes"""
+    return Process(getpid()).memory_info().rss / 1024 ** 2
 
 
 def reduce_data(out_file: Path) -> None:

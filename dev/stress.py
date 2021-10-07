@@ -5,11 +5,15 @@ from itertools import product
 from json import load
 from os.path import exists
 from pathlib import Path
+from sys import path
 from time import perf_counter
 
 import pandas as pd
+from tqdm import tqdm
 
-from sparsy.core import process
+path.append(".")
+
+from sparsy.core import core
 from sparsy.numeric import gen_data
 
 
@@ -34,7 +38,7 @@ def main():
             columns=["firm", "nclass", "year"],
         )
         t0 = perf_counter()
-        process(data, iter_size, outfile=Path(""), IO=False)
+        core(data, iter_size, Path(""), False)
         t1 = perf_counter()
         elapsed = t1 - t0
         print(f"elapsed_time: {elapsed}")
