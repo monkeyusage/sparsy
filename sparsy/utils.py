@@ -31,7 +31,7 @@ def chunker(seq: Sequence[T], size: int) -> Iterator[Sequence[T]]:
 
 
 def extract_type(dtype: np.dtype) -> int:
-    return int(dtype.name.replace("float", "").replace("int", ""))
+    return int("".join(filter(str.isdigit, dtype.name)))
 
 
 def get_memory_usage() -> int:

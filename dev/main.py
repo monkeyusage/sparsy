@@ -52,6 +52,21 @@ def main() -> None:
 
     data = data[["firm", "nclass", "year"]]
     data["year"] = data["year"].astype(np.uint16)
+    # sort by nclass and create a new tclass independant of naming of nclass just in case
+    logging.info("replacing nclass by tclass")
+    data["firm"] = data.firm.astype(np.uint64)
+    data["nclass"] = data.nclass.astype(np.uint32)
+    
+    tclass_replacements = dict(
+        (k, int(v)) for k, v in zip(data.nclass.unique(), range(data.nclass.nunique()))
+    )
+    
+    data["tclass"] = data.nclass.replace(tclass_replacements)
+    
+    data["year"] = data.year.astype(np.uint16)
+    logging.info("sorting years")
+    data = data.sort_values("year")
+
     logging.info("Launchung core computation")
     print(
         f"Computing with configurations: {input_file=}, {outfile=}, {iter_size=}, {cores=}"
