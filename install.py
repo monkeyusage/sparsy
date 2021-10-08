@@ -18,7 +18,8 @@ if not path.exists("data"):
 config = {
     "input_data": "data/data.dta",
     "output_data": "data/spills/output.dta",
-    "iteration_size": 3,
+    "year_iteration":3,
+    "matrix_iteration": 500,
     "n_cores": 0,
     "stress": {
         "iteration_sizes": [3, 5],
