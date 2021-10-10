@@ -74,9 +74,10 @@ def process(
         post_process(firms, year, std, cov_std, mal, cov_mal, outfile)
 
 
-def core(data: pd.DataFrame, iter_size: int, matrix_iteration:int, outfile: Path, cores: int = 0) -> None:
+def core(data: pd.DataFrame, iter_size: int, outfile: Path) -> None:
     years: list[int] = list(range(data["year"].min(), data["year"].max() + 1))
     logging.info("launching main process on one process")
+    import pdb;pdb.set_trace()
     for year_set in tqdm(chunker(years, iter_size)):
         logging.info("processing data using year: %s", year_set)
         maybe = preprocess(data, year_set)

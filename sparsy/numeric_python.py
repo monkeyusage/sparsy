@@ -3,10 +3,8 @@ from __future__ import annotations
 import logging
 
 import numpy as np
-import cupy as cp
-from numba import njit
-from tqdm import tqdm
-from sparsy.numeric import dot_zero
+from numba import njit, prange
+# from sparsy.numeric import dot_zero
 
 from sparsy.utils import extract_type, get_memory_usage
 
@@ -31,6 +29,42 @@ def dot_zero2(matrix: np.ndarray) -> np.ndarray:
                 continue
             total += np.dot(matrix[idx], matrix[idy])
         out[idx] = total
+    return out
+
+@njit
+def dot_zero3(matrix: np.ndarray) -> np.ndarray: # best for now
+    K = matrix.shape[0]
+    J = matrix.shape[1]
+    I = matrix.shape[0]
+    out = np.zeros(K)
+    for k in prange(K):
+        total = 0
+        for i in range(I):
+            if i == k:
+                continue
+            for j in range(J):
+                total += matrix[k, j] * matrix[i, j]
+        out[k] = total
+    return out
+
+@njit
+def dot_zero4(matrix: np.ndarray):
+    K = matrix.shape[0]
+    J = matrix.shape[1]
+    flat = matrix.flatten()
+    out = np.zeros(K)
+    for k in range(K):
+        x = matrix[k, :]
+        i = 0
+        total = 0
+        while i < k*J:
+            total += x[i%J] * flat[i] # modulo potentiellement merdique
+            i+=1
+        i += J
+        while i < K*J:
+            total += x[i%J] * flat[i]
+            i+=1
+        out[k] = total
     return out
 
 def dot_zero_old(matrix:np.ndarray) -> np.ndarray:

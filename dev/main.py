@@ -71,7 +71,7 @@ def main() -> None:
     print(
         f"Computing with configurations: {input_file=}, {outfile=}, {iter_size=}, {cores=}"
     )
-    core(data, iter_size, matrix_iteration, outfile, cores)
+    core(data, iter_size, outfile)
 
     logging.info("reducing data")
     if verbose:
