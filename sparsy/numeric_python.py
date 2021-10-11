@@ -20,23 +20,11 @@ def tclass_corr(values: np.ndarray) -> np.ndarray:
     return var
 
 @njit
-def dot_zero2(matrix: np.ndarray) -> np.ndarray:
-    out = np.zeros(matrix.shape[0], dtype=np.float32)
-    for idx in range(matrix.shape[0]):
-        total = 0
-        for idy in range(matrix.shape[0]):
-            if idx == idy:
-                continue
-            total += np.dot(matrix[idx], matrix[idy])
-        out[idx] = total
-    return out
-
-@njit
 def dot_zero3(matrix: np.ndarray) -> np.ndarray: # best for now
     K = matrix.shape[0]
     J = matrix.shape[1]
     I = matrix.shape[0]
-    out = np.zeros(K)
+    out = np.zeros(K, dtype=np.float32)
     for k in prange(K):
         total = 0
         for i in range(I):
@@ -44,26 +32,6 @@ def dot_zero3(matrix: np.ndarray) -> np.ndarray: # best for now
                 continue
             for j in range(J):
                 total += matrix[k, j] * matrix[i, j]
-        out[k] = total
-    return out
-
-@njit
-def dot_zero4(matrix: np.ndarray):
-    K = matrix.shape[0]
-    J = matrix.shape[1]
-    flat = matrix.flatten()
-    out = np.zeros(K)
-    for k in range(K):
-        x = matrix[k, :]
-        i = 0
-        total = 0
-        while i < k*J:
-            total += x[i%J] * flat[i] # modulo potentiellement merdique
-            i+=1
-        i += J
-        while i < K*J:
-            total += x[i%J] * flat[i]
-            i+=1
         out[k] = total
     return out
 

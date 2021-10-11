@@ -4,3 +4,4 @@ scipy
 tqdm
 psutil
 Cython
+numba
