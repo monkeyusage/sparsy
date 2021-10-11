@@ -6,7 +6,7 @@ from cython.parallel import prange, parallel
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.nonecheck(False)
-def float[:] dot_zero_cy1(float[:, :] matrix) nogil:
+cpdef float[:] dot_zero_cy1(float[:, :] matrix) nogil:
     cdef int size = matrix.shape[0]
     cdef int idx = 0
     cdef int idy = 0
@@ -27,7 +27,7 @@ def float[:] dot_zero_cy1(float[:, :] matrix) nogil:
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.nonecheck(False)
-def float[:] dot_zero_cy2(float[:, :] matrix) nogil:
+cpdef float[:] dot_zero_cy2(float[:, :] matrix) nogil:
     cdef Py_ssize_t  K = matrix.shape[0]
     cdef Py_ssize_t  J = matrix.shape[1]
     cdef float[:] flat = matrix.flatten()
@@ -52,7 +52,7 @@ def float[:] dot_zero_cy2(float[:, :] matrix) nogil:
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.nonecheck(False)
-def float[:] dot_zero_cy3(float[:, :] matrix) nogil:
+cpdef float[:] dot_zero_cy3(float[:, :] matrix) nogil:
     cdef Py_ssize_t  K = matrix.shape[0]
     cdef Py_ssize_t  J = matrix.shape[1]
     cdef Py_ssize_t  I = matrix.shape[0]
