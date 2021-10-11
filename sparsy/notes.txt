@@ -1,1 +1,0 @@
-cython implementation is slower than numba

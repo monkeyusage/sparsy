@@ -3,10 +3,9 @@ from __future__ import annotations
 import logging
 
 import numpy as np
-from numba import njit, prange
-# from sparsy.numeric import dot_zero
-
-from sparsy.utils import extract_type, get_memory_usage
+from numba import njit
+from sparsy.numeric import dot_zero
+from sparsy.utils import get_memory_usage
 
 @njit
 def tclass_corr(values: np.ndarray) -> np.ndarray:
@@ -18,22 +17,6 @@ def tclass_corr(values: np.ndarray) -> np.ndarray:
                 continue
             var[i, j] = var[i, j] / (np.sqrt(base_var[i, i]) * np.sqrt(base_var[j, j]))
     return var
-
-@njit
-def dot_zero3(matrix: np.ndarray) -> np.ndarray: # best for now
-    K = matrix.shape[0]
-    J = matrix.shape[1]
-    I = matrix.shape[0]
-    out = np.zeros(K, dtype=np.float32)
-    for k in prange(K):
-        total = 0
-        for i in range(I):
-            if i == k:
-                continue
-            for j in range(J):
-                total += matrix[k, j] * matrix[i, j]
-        out[k] = total
-    return out
 
 def dot_zero_old(matrix:np.ndarray) -> np.ndarray:
     out = matrix.dot(matrix.T) * 100
@@ -48,6 +31,7 @@ def mahalanobis(biggie:np.ndarray, small:np.ndarray) -> np.ndarray:
     out = out.sum(axis=1)
     return out
 
+
 def compute(matrix: np.ndarray) -> tuple[np.ndarray, ...]:
     values : np.ndarray = ((matrix / matrix.sum(axis=1)[:, None]) * 100).astype("float32")
     # compute matrix of correlations between classes (m x m)
@@ -60,8 +44,6 @@ def compute(matrix: np.ndarray) -> tuple[np.ndarray, ...]:
     # np.dot(arr, arr.T).diagonal() == (arr * arr).sum(axis=1)
     norm_values = values / np.sqrt((values * values).sum(axis=1))[:, None]
 
-    # warm up the jit
-    dot_zero(var)
     # generate standard measures
     std = dot_zero(norm_values)
     cov_std = dot_zero(values)

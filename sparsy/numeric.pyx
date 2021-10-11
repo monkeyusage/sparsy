@@ -7,7 +7,7 @@ from libc.stdlib cimport malloc, free
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.nonecheck(False)
-def dot_zero_cy3(float[:, :] matrix) -> float[:]:
+def dot_zero_cy3(float[:, :] matrix) -> list[float]:
     cdef Py_ssize_t  K = matrix.shape[0]
     cdef Py_ssize_t  J = matrix.shape[1]
     cdef Py_ssize_t  I = matrix.shape[0]

@@ -8,6 +8,7 @@ else:
     system(r".\venv\Scripts\activate && python -m pip uninstall -r requirements.txt -y")
 
 result = system(r".\venv\Scripts\activate && python -m pip install -r requirements.txt")
+system(r".\venv\Scripts\activate && python setup.py build_ext --inplace")
 
 if not path.exists("data"):
     print("> did not find a data folder creating it")
@@ -18,7 +19,7 @@ if not path.exists("data"):
 config = {
     "input_data": "data/data.dta",
     "output_data": "data/spills/output.dta",
-    "iteration_size": 3,
+    "year_iteration": 3,
     "n_cores": 0,
     "stress": {
         "iteration_sizes": [3, 5],

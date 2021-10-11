@@ -37,7 +37,6 @@ def main() -> None:
     input_file: str = cast(str, config["input_data"])
     outfile = Path(cast(str, config["output_data"]))
     iter_size = cast(int, config["year_iteration"])
-    matrix_iteration = cast(int, config["matrix_iteration"])
     cores = cast(int, config["n_cores"])
 
     logging.info(f"reading input file {input_file}")
