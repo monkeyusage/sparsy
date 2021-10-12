@@ -4,7 +4,6 @@ from os import getpid, listdir, remove
 from pathlib import Path
 from typing import Iterator, Sequence, TypeVar
 
-import numpy as np
 import pandas as pd
 from psutil import Process
 

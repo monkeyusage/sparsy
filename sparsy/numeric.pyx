@@ -21,6 +21,9 @@ def dot_zero(float[:, :] matrix) -> list[float]:
             return out.sum(axis=1)
     However in this version we do not expand memory from N x M (e.g 68K x 7) to N x N (68K x 68K)
     We reduce the output while computing results thus keeping memory to the minimum N
+
+    matrix shape : N x M
+    out shape : N x 1
     """
     cdef Py_ssize_t  K = matrix.shape[0]
     cdef Py_ssize_t  J = matrix.shape[1]
@@ -64,7 +67,7 @@ def mahalanobis(float[:, :] biggie, float[:, :] small) -> list[float]:
     small shape : M x N
     with small != biggie.T
 
-    we require user to perform f = small.dot(biggie.T) before calling this function since:
+    we require user to perform f(small, biggie) = small.dot(biggie.T) before calling this function since:
         - f is fast AND memory efficient
         - memory views do not implement numpy functions
     """
