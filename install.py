@@ -20,6 +20,7 @@ config = {
     "input_data": "data/data.dta",
     "output_data": "data/spills/output.dta",
     "year_iteration": 3,
+
     "n_cores": 0,
     "stress": {
         "iteration_sizes": [3, 5],
