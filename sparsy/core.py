@@ -84,6 +84,8 @@ def core(data: pd.DataFrame, iter_size: int, outfile: Path) -> None:
         if maybe is None:
             continue
         firms, subsh = maybe
+        # save intermediate file
+        pd.DataFrame(data=subsh, index=firms.astype(np.int64)).to_stata("data/intermediate.dta")
         std, cov_std, mal, cov_mal = compute(subsh)
         year = max(year_set)
         if outfile != Path(""):
