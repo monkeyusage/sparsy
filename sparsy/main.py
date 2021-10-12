@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from json import load
+from json import load, dump
 from pathlib import Path
 from sys import argv
 from time import perf_counter
@@ -13,21 +13,6 @@ from tqdm import tqdm
 
 from sparsy.numeric import dot_zero, mahalanobis
 from sparsy.utils import chunker, reduce_data
-
-# Those are function definitions of now memory optimised cython functions
-# We keep them here for comparision's sake
-# def dot_zero_old(matrix:np.ndarray) -> np.ndarray:
-#     out = matrix.dot(matrix.T) * 100
-#     np.fill_diagonal(out, 0)
-#     out = out.sum(axis=1)
-#     return out
-
-# def mahalanobis_old(biggie:np.ndarray, small:np.ndarray) -> np.ndarray:
-#     out = biggie.dot(small.dot(biggie.T))
-#     out = np.round(out, decimals=2) * 100
-#     np.fill_diagonal(out, 0)
-#     out = out.sum(axis=1)
-#     return out
 
 
 def tclass_corr(values: np.ndarray) -> np.ndarray:
@@ -128,18 +113,20 @@ def core(data: pd.DataFrame, iter_size: int, outfile: Path) -> None:
     years: list[int] = list(range(data["year"].min(), data["year"].max() + 1))
     logging.info("launching main process on one process")
 
-    for year_set in tqdm(chunker(years, iter_size)):
+    for year_set in tqdm(chunker(years, iter_size), total= len(years) - iter_size):
         logging.info("processing data using year: %s", year_set)
         maybe = preprocess(data, year_set)
         if maybe is None:
             continue
         firms, subsh = maybe
         # save intermediate file
-        pd.DataFrame(data=subsh, index=firms.astype(np.int64)).to_stata(
-            "data/intermediate.dta"
-        )
-        std, cov_std, mal, cov_mal = compute(subsh)
         year = max(year_set)
+        pd.DataFrame(
+            data=subsh,
+            index=firms.astype(np.int64),
+            columns=[f"tclass_{i}" for i in range(subsh.shape[0])]
+        ).to_stata(f"data/intermediate_{year}.dta")
+        std, cov_std, mal, cov_mal = compute(subsh)
         if outfile != Path(""):
             post_process(firms, year, std, cov_std, mal, cov_mal, outfile)
 
@@ -181,8 +168,12 @@ def main() -> None:
     data["nclass"] = data.nclass.astype(np.uint32)
 
     tclass_replacements = dict(
-        (k, int(v)) for k, v in zip(data.nclass.unique(), range(data.nclass.nunique()))
+        (int(k), int(v)) for k, v in zip(data.nclass.unique(), range(data.nclass.nunique()))
     )
+
+    logging.info("writing nclass to tclass mapping inside replacement.json")
+    with open("data/replacements.json", "w") as rep:
+        dump(tclass_replacements, rep)
 
     data["tclass"] = data.nclass.replace(tclass_replacements)
     data["year"] = data.year.astype(np.uint16)
