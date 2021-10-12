@@ -37,7 +37,6 @@ def main() -> None:
     input_file: str = cast(str, config["input_data"])
     outfile = Path(cast(str, config["output_data"]))
     iter_size = cast(int, config["year_iteration"])
-    matrix_iteration = cast(int, config["matrix_iteration"])
     cores = cast(int, config["n_cores"])
 
     logging.info(f"reading input file {input_file}")
@@ -52,11 +51,26 @@ def main() -> None:
 
     data = data[["firm", "nclass", "year"]]
     data["year"] = data["year"].astype(np.uint16)
+    # sort by nclass and create a new tclass independant of naming of nclass just in case
+    logging.info("replacing nclass by tclass")
+    data["firm"] = data.firm.astype(np.uint64)
+    data["nclass"] = data.nclass.astype(np.uint32)
+    
+    tclass_replacements = dict(
+        (k, int(v)) for k, v in zip(data.nclass.unique(), range(data.nclass.nunique()))
+    )
+    
+    data["tclass"] = data.nclass.replace(tclass_replacements)
+    
+    data["year"] = data.year.astype(np.uint16)
+    logging.info("sorting years")
+    data = data.sort_values("year")
+
     logging.info("Launchung core computation")
     print(
         f"Computing with configurations: {input_file=}, {outfile=}, {iter_size=}, {cores=}"
     )
-    core(data, iter_size, matrix_iteration, outfile, cores)
+    core(data, iter_size, outfile)
 
     logging.info("reducing data")
     if verbose:

@@ -2,3 +2,10 @@
 /venv
 .vscode
 __pycache__
+/build
+/notebooks
+*.pyd
+*.so
+*.c
+*.egg
+*.o
