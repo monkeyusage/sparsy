@@ -1,2 +1,2 @@
 @echo off
-venv\Scripts\activate && python dev\main.py && pause
+venv\Scripts\activate && python run.py && pause

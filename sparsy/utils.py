@@ -30,13 +30,20 @@ def chunker(seq: Sequence[T], size: int) -> Iterator[Sequence[T]]:
             return
 
 
-def extract_type(dtype: np.dtype) -> int:
-    return int("".join(filter(str.isdigit, dtype.name)))
+def extract_type(dtype: str) -> int:
+    """
+    >>> import numpy as np
+    >>> arr = np.random.randn(size=(50,50), dtype=np.uint64)
+    >>> extract_type(arr.dtype.name)
+    >>> 64
+    """
+    return int("".join(filter(str.isdigit, dtype)))
 
 
 def get_memory_usage() -> int:
     """return python process memory usage in megabytes"""
-    return Process(getpid()).memory_info().rss / 1024 ** 2
+    mb: int = Process(getpid()).memory_info().rss / 1024 ** 2
+    return mb
 
 
 def reduce_data(out_file: Path) -> None:

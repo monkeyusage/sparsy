@@ -20,14 +20,6 @@ config = {
     "input_data": "data/data.dta",
     "output_data": "data/spills/output.dta",
     "year_iteration": 3,
-
-    "n_cores": 0,
-    "stress": {
-        "iteration_sizes": [3, 5],
-        "n_rows": [10000000],
-        "n_firms": [500000],
-        "n_classes": [6, 500],
-    },
 }
 
 print("overwriting/creating configurations file")

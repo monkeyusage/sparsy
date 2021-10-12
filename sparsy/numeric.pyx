@@ -1,13 +1,27 @@
 import numpy as np
-cimport numpy as np
+
 cimport cython
-from cython.parallel import prange, parallel
-from libc.stdlib cimport malloc, free
+cimport numpy as np
+
+from cython.parallel import parallel, prange
+
+from libc.stdlib cimport free, malloc
+
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.nonecheck(False)
 def dot_zero(float[:, :] matrix) -> list[float]:
+    """
+    Uses MemoryView from numpy array as input
+    Rough equivalent of numpy:
+    >>> def dot_zero(matrix: np.ndarray) -> np.ndarray:
+            out = matrix.dot(matrix.T)
+            np.fill_diagonal(out, 0)
+            return out.sum(axis=1)
+    However in this version we do not expand memory from N x M (e.g 68K x 7) to N x N (68K x 68K)
+    We reduce the output while computing results thus keeping memory to the minimum N
+    """
     cdef Py_ssize_t  K = matrix.shape[0]
     cdef Py_ssize_t  J = matrix.shape[1]
     cdef Py_ssize_t  I = matrix.shape[0]
@@ -36,6 +50,24 @@ def dot_zero(float[:, :] matrix) -> list[float]:
 @cython.wraparound(False)
 @cython.nonecheck(False)
 def mahalanobis(float[:, :] biggie, float[:, :] small) -> list[float]:
+    """
+    Uses MemoryView from numpy array as input
+    Rough equivalent of numpy:
+    >>> def dot_zero(biggie: np.ndarray, small: np.ndarray) -> np.ndarray:
+            out = biggie.dot(small)
+            np.fill_diagonal(out, 0)
+            return out.sum(axis=1)
+    However in this version we do not expand memory from N x M (e.g 68K x 7) to N x N (68K x 68K)
+    We reduce the output while computing results thus keeping memory to the minimum N
+    
+    biggie shape : N x M
+    small shape : M x N
+    with small != biggie.T
+
+    we require user to perform f = small.dot(biggie.T) before calling this function since:
+        - f is fast AND memory efficient
+        - memory views do not implement numpy functions
+    """
     cdef Py_ssize_t  K = biggie.shape[0]
     cdef Py_ssize_t  J = biggie.shape[1]
     cdef Py_ssize_t  I = small.shape[1]
