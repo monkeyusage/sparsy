@@ -124,7 +124,7 @@ def core(data: pd.DataFrame, iter_size: int, outfile: Path) -> None:
         pd.DataFrame(
             data=subsh,
             index=firms.astype(np.int64),
-            columns=[f"tclass_{i}" for i in range(subsh.shape[0])]
+            columns=[f"tclass_{i}" for i in range(subsh.shape[1])]
         ).to_stata(f"data/intermediate_{year}.dta")
         std, cov_std, mal, cov_mal = compute(subsh)
         if outfile != Path(""):
@@ -164,7 +164,7 @@ def main() -> None:
     data["year"] = data["year"].astype(np.uint16)
     # sort by nclass and create a new tclass independant of naming of nclass just in case
     logging.info("replacing nclass by tclass")
-    data["firm"] = data.firm.astype(np.uint64)
+    data["firm"] = data.firm.astype(np.int64)
     data["nclass"] = data.nclass.astype(np.uint32)
 
     tclass_replacements = dict(
@@ -173,13 +173,16 @@ def main() -> None:
 
     logging.info("writing nclass to tclass mapping inside replacement.json")
     with open("data/replacements.json", "w") as rep:
-        dump(tclass_replacements, rep)
+        dump(tclass_replacements, rep, indent=4)
 
     data["tclass"] = data.nclass.replace(tclass_replacements)
     data["year"] = data.year.astype(np.uint16)
 
     logging.info("sorting years")
     data = data.sort_values("year")
+
+    logging.info("saving intermediate file")
+    data.to_stata("data/intermediate.dta")
 
     logging.info("Launchung core computation")
     print(f"Computing with configurations: {input_file=}, {outfile=}, {iter_size=}")

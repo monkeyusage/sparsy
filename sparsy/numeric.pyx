@@ -6,7 +6,9 @@ cimport numpy as np
 from cython.parallel import parallel, prange
 
 from libc.stdlib cimport free, malloc
+from os import cpu_count
 
+cdef int __CPUS = cpu_count() - 1 
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
@@ -36,7 +38,7 @@ def dot_zero(float[:, :] matrix) -> list[float]:
     cdef Py_ssize_t j
     cdef Py_ssize_t k
     try:
-        with nogil:
+        with nogil, parallel(num_threads=__CPUS):
             for k in prange(K):
                 total = 0
                 for i in range(I):
@@ -82,7 +84,7 @@ def mahalanobis(float[:, :] biggie, float[:, :] small) -> list[float]:
     cdef Py_ssize_t j
     cdef Py_ssize_t k
     try:
-        with nogil:
+        with nogil, parallel(num_threads=__CPUS):
             for k in prange(K):
                 total = 0
                 for i in range(I):
