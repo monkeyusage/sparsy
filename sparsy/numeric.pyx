@@ -47,7 +47,7 @@ def dot_zero(float[:, :] matrix) -> list[float]:
                     for j in range(J):
                         total = total + (matrix[k, j] * matrix[i, j])
                 out[k] = total
-        return [item for item in out[:K]]
+        return np.array([item for item in out[:K]], dtype=np.float32).round(2) * 100
     finally:
         free(out)
 
@@ -93,6 +93,6 @@ def mahalanobis(float[:, :] biggie, float[:, :] small) -> list[float]:
                     for j in range(J):
                         total = total + (biggie[k, j] * small[j, i])
                 out[k] = total
-        return [item for item in out[:K]]
+        return np.array([item for item in out[:K]], dtype=np.float32).round(2) * 100
     finally:
         free(out)
