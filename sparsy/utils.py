@@ -18,7 +18,7 @@ def chunker(seq: Sequence[T], size: int) -> Iterator[Sequence[T]]:
     >>> [[0, 1, 2], [1, 2, 3], [2, 3, 4], ..., [7, 8, 9]]
     """
     l = len(seq)
-    if size < 0:
+    if size <= 0:
         yield seq
         return
     for idx in range(0, l):
