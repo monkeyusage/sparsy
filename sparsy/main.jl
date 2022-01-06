@@ -2,6 +2,7 @@ import JSON, StatFiles, CSV
 using DataFrames, ProgressBars
 
 function get_replacements(classes::Vector{T})::Dict{T, UInt64} where {T<:Number}
+    # map unique elements to ints
     replacements = Dict{T, UInt64}()
     for (tclass, nclass) in enumerate(unique(classes))
         replacements[nclass] = tclass
@@ -9,10 +10,7 @@ function get_replacements(classes::Vector{T})::Dict{T, UInt64} where {T<:Number}
     replacements
 end
 
-function core(data::DataFrame, iter_size::Int, outfile::String)
-    years = [year for year in min(data[!, "year"]...):max(data[!, "year"]...)]
-    
-end
+function extract_matrix(data::DataFrame, )
 
 function main()
     config = JSON.parsefile("data/config.json")
@@ -36,6 +34,13 @@ function main()
     sort!(data, "year") # sort by year
 
     CSV.write("data/intermediate.csv", data)
+
+    for (index, _) in ProgressBar(enumerate(years))
+        year_set = index+iter_size < length(years) ? Set(years[index:index+iter_size]) : Set(years[index:end])
+        subset = data[data[!, "year"] => in(year_set) , :]
+        freq = freqtable(df, :firm, :tclass)
+        firms = names(freq)[1]
+    end
 end
 
 export main

@@ -6,7 +6,8 @@ libraries = [
     "StatFiles",
     "CSV",
     "BenchmarkTools",
-    "ProgressBars"
+    "ProgressBars",
+    "FreqTables"
 ]
 
 for pkg in libraries
