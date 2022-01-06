@@ -14,7 +14,7 @@ function get_replacements(classes::Vector{T})::Dict{T, UInt64} where {T<:Number}
     replacements
 end
 
-function tclass_corr(matrix::Matrix)::Matrix
+function tclass_corr(matrix::Matrix{<:Number})::Matrix{<:Number}
     var = matrix'matrix
     base_var = copy(var)
     s = size(var)[1]
@@ -45,10 +45,21 @@ function dot_zero(matrix::Matrix{<:Number})::Array{Float32}
         end
         out[k] = total
     end
-    out
+
+    # # vectorized version
+    # out = matrix * matrix'
+    # out[diagind(out)] .= 0
+    # out = sum(out, dims=2)
+out
 end
 
-function mahalanobis(biggie::Matrix{T}, small::Matrix{T})::Vector{Float32} where {T<:Number}
+function kernel(matrix)
+    a = threadIdx().x
+    b = blockIdx().y
+    x[]
+end
+
+function mahalanobis(biggie::Matrix{T}, small::Matrix{T})::Array{Float32} where {T<:Number}
     K = size(biggie)[1]
     J = size(biggie)[2]
     I = size(small)[2]
@@ -66,9 +77,14 @@ function mahalanobis(biggie::Matrix{T}, small::Matrix{T})::Vector{Float32} where
         out[k] = total
     end
     out
+
+    # # vectorixed version
+    # out = biggie * (small * biggie')
+    # out[diagind(out)] .= 0
+    # out = sum(out, dims=2)
 end
 
-function compute_metrics(matrix::Matrix)::NTuple{4, Vector{Float32}}
+function compute_metrics(matrix::Matrix)::NTuple{4, Array{Float32}}
     α = (matrix ./ sum(matrix, dims=2))
     # scale down precision to 32 bits / 16 bits breaks
     α = convert(Matrix{Float32}, α)
