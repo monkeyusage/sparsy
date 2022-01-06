@@ -71,7 +71,7 @@ function mahalanobis(biggie::Matrix{T}, small::Matrix{T})::Array{Float32} where 
         for i in 1:I
             if i == k continue end
             for j in 1:J
-                @inbounds total = total + fma(biggie[k, j] , small[j, i], total)
+                @inbounds total = biggie[k, j] * small[j, i] + total
             end
         end
         out[k] = total
