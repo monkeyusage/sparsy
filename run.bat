@@ -1,2 +1,2 @@
 @echo off
-venv\Scripts\activate && python run.py && pause
+venv\Scripts\activate && julia -t 7 run.jl && pause

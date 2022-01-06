@@ -7,8 +7,8 @@ OPEN_MP = ["-fopenmp"] if name != "nt" else ["/openmp"]
 
 ext_modules = [
     Extension(
-        "sparsy.numeric",
-        ["sparsy/numeric.pyx"],
+        "pysparsy.numeric",
+        ["pysparsy/numeric.pyx"],
         extra_compile_args = OPEN_MP,
         extra_link_args = OPEN_MP,
     )
@@ -20,7 +20,7 @@ ext_modules = [
 # )
 
 setup(
-    name="sparsy/numeric",
+    name="pysparsy/numeric",
     ext_modules = cythonize(ext_modules),
     include_dirs=[numpy.get_include()],
 )

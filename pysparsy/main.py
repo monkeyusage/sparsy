@@ -11,8 +11,8 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from sparsy.numeric import dot_zero, mahalanobis
-from sparsy.utils import chunker, reduce_data
+from pysparsy.numeric import dot_zero, mahalanobis
+from pysparsy.utils import chunker, reduce_data
 
 
 def tclass_corr(values: np.ndarray) -> np.ndarray:
@@ -27,7 +27,7 @@ def tclass_corr(values: np.ndarray) -> np.ndarray:
 
 
 def compute(matrix: np.ndarray) -> tuple[np.ndarray, ...]:
-    values: np.ndarray = ((matrix / matrix.sum(axis=1)[:, None]) * 100).astype(
+    values: np.ndarray = (matrix / matrix.sum(axis=1)[:, None]).astype(
         "float32"
     )
     # compute matrix of correlations between classes (m x m)

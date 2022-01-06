@@ -62,7 +62,7 @@ def reduce_data(out_file: Path) -> None:
         dfs.append(df)
     out_df = pd.concat(dfs, ignore_index=True)
     out_df = out_df.sort_values("firm")
-    out_df.to_stata(out_file) if out_file.name.endswith(".dta") else out_df.to_csv(
+    out_df.to_stata(out_file, write_index=False) if out_file.name.endswith(".dta") else out_df.to_csv(
         out_file, sep="\t", index=False
     )
 

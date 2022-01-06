@@ -1,3 +1,4 @@
-include("sparsy/main.jl")
+include("main.jl")
+using Main.Sparsy
 
 main()

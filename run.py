@@ -1,4 +1,4 @@
-from sparsy import main
+from pysparsy import main
 
 if __name__ == "__main__":
     main()

@@ -18,8 +18,8 @@ if not path.exists("data"):
 
 config = {
     "input_data": "data/data.dta",
-    "output_data": "data/spills/output.dta",
-    "year_iteration": 3,
+    "output_data": "data/output.dta",
+    "year_iteration": 1,
 }
 
 print("overwriting/creating configurations file")
