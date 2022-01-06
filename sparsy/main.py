@@ -95,20 +95,6 @@ def post_process(
     df.to_csv(tmpfile, sep="\t", index=False)
 
 
-def process(data: pd.DataFrame, year_set: list[int], outfile: Path) -> None:
-    sub_data = preprocess(data, year_set)
-    if sub_data is None:
-        return
-    year = max(year_set)
-    firms, subsh = sub_data
-
-    std, cov_std, mal, cov_mal = compute(subsh)
-
-    if outfile != Path(""):
-        # df creation for further saving
-        post_process(firms, year, std, cov_std, mal, cov_mal, outfile)
-
-
 def core(data: pd.DataFrame, iter_size: int, outfile: Path) -> None:
     years: list[int] = list(range(data["year"].min(), data["year"].max() + 1))
     logging.info("launching main process on one process")
