@@ -40,7 +40,7 @@ function dot_zero(matrix::Matrix{<:Number})::Array{Float32}
         for i in 1:I
             if i == k continue end
             for j in 1:J
-                @inbounds total = total + (matrix[k, j] * matrix[i, j])
+                @inbounds total = matrix[k, j] * matrix[i, j] + total
             end
         end
         out[k] = total
@@ -50,7 +50,7 @@ function dot_zero(matrix::Matrix{<:Number})::Array{Float32}
     # out = matrix * matrix'
     # out[diagind(out)] .= 0
     # out = sum(out, dims=2)
-out
+    out
 end
 
 function kernel(matrix)
@@ -71,7 +71,7 @@ function mahalanobis(biggie::Matrix{T}, small::Matrix{T})::Array{Float32} where 
         for i in 1:I
             if i == k continue end
             for j in 1:J
-                @inbounds total = total + (biggie[k, j] * small[j, i])
+                @inbounds total = total + fma(biggie[k, j] , small[j, i], total)
             end
         end
         out[k] = total
