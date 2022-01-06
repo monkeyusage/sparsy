@@ -10,7 +10,26 @@ function get_replacements(classes::Vector{T})::Dict{T, UInt64} where {T<:Number}
     replacements
 end
 
-function extract_matrix(data::DataFrame, )
+# def tclass_corr(values: np.ndarray) -> np.ndarray:
+#     var: np.ndarray = values.T.dot(values)
+#     base_var = var.copy()
+#     for i in range(var.shape[0]):
+#         for j in range(var.shape[0]):
+#             if var[i, i] == 0 or var[j, j] == 0:
+#                 continue
+#             var[i, j] = var[i, j] / (np.sqrt(base_var[i, i]) * np.sqrt(base_var[j, j]))
+#     return var
+
+function tclass_corr(matrix::Matrix)::Matrix
+    var = 
+end
+
+
+function compute_metrics(matrix::Matrix)::Tuple{Int64, Int64, Int64, Int64}
+    # ((matrix / matrix.sum(axis=1)[:, None]) * 100)
+    values = convert(Matrix{Float32}, (matrix ./ sum(matrix, dims=2)) * 100)
+    var = tclass_corr(values)
+end
 
 function main()
     config = JSON.parsefile("data/config.json")
@@ -40,6 +59,8 @@ function main()
         subset = data[data[!, "year"] => in(year_set) , :]
         freq = freqtable(df, :firm, :tclass)
         firms = names(freq)[1]
+        subsh = convert(Matrix, freq)
+        std, cov_std, mal, cov_mal = compute_metrics(subsh)
     end
 end
 
