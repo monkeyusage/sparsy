@@ -1,9 +1,10 @@
-module Sparsy
-
-import JSON, StatFiles, CSV
-using DataFrames
-using ProgressBars
-using FreqTables
+using JSON: json, parsefile
+using StatFiles: load as dtaload
+using CSV: write as csvwrite, read as csvread
+using DataFrames: DataFrame, replace!, rename!, sort!
+using ProgressBars: ProgressBar
+using FreqTables: freqtable
+using Tables: table
 
 function get_replacements(classes::Vector{T})::Dict{T, UInt64} where {T<:Number}
     # map unique elements to ints
@@ -56,21 +57,22 @@ function dot_zero(matrix::Matrix{<:Number})::Array{Float32}
     out
 end
 
-function kernel_example!(out, mat)
-    # this is the part we haev to figure out
-    # x = (blockIdx().x - 1) * blockDim().x + threadIdx().x
-    if x < size(mat)[1]
-        @inbounds out[x] = mat[idx_k, ind_i] * mat[idx_i, idx_j]
-end
+# function kernel_example!(out, mat)
+#     # this is the part we haev to figure out
+#     # x = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+#     if x < size(mat)[1]
+#         @inbounds out[x] = mat[idx_k, ind_i] * mat[idx_i, idx_j]
+#     end
+# end
 
-function dot_zero_gpu(mat)
-    n = size(mat)[1]
-    out = CUDA.zeros(n)
-    threads = THREADS_PER_BLOCK
-    blocks = ceil(Int64, n/threads)
+# function dot_zero_gpu(mat)
+#     n = size(mat)[1]
+#     out = CUDA.zeros(n)
+#     threads = THREADS_PER_BLOCK
+#     blocks = ceil(Int64, n/threads)
 
-    @cuda threads=threads blocks=blocks kernel_example!(out, mat)
-end
+#     @cuda threads=threads blocks=blocks kernel_example!(out, mat)
+# end
 
 function mahalanobis(biggie::Matrix{T}, small::Matrix{T})::Array{Float32} where {T<:Number}
     K = size(biggie)[1]
@@ -97,18 +99,6 @@ function mahalanobis(biggie::Matrix{T}, small::Matrix{T})::Array{Float32} where 
     # out = sum(out, dims=2)
 end
 
-@kernel function k(out, inp, arg)
-    x_index, y_index = @index(Global, NTuple)
-    x_outidx = x_index + translation[1]
-    y_outidx = y_index + translation[2]
-    if x_index == y_index
-        out[x_outidx, y_outidx] = Float32(0)
-        return
-
-    end
-
-
-
 function compute_metrics(matrix::Matrix)::NTuple{4, Array{Float32}}
     α = (matrix ./ sum(matrix, dims=2))
     # scale down precision to 32 bits / 16 bits breaks
@@ -128,14 +118,7 @@ function compute_metrics(matrix::Matrix)::NTuple{4, Array{Float32}}
     std, cov_std, ma, cov_ma
 end
 
-function main()
-    # dataprep
-    config = JSON.parsefile("data/config.json")
-    input_file = config["input_data"]
-    output_file = config["output_data"]
-    iter_size = config["year_iteration"]
-
-    data = DataFrame(StatFiles.load(input_file))
+function dataprep!(data::DataFrame)::DataFrame
     data = data[:, ["year", "firm", "nclass"]]
     data[!, "year"] = map(UInt16, data[!, "year"])
     data[!, "nclass"] = map(UInt32, data[!, "nclass"])
@@ -143,51 +126,60 @@ function main()
     # replace nclass by tclass and save mapping to json
     replacements = get_replacements(data[!, "nclass"])
     open("data/replacements.json", "w") do f
-        write(f, JSON.json(replacements, 4))
+        write(f, json(replacements, 4))
     end
 
     replace!(data[!, "nclass"], replacements...) # replace nclass to be tclass
     rename!(data, "nclass" => "tclass") # rename nclass to tclass
     sort!(data, "year") # sort by year
 
-    CSV.write("data/tmp/intermediate.csv", data)
-    years = [year for year in data[!, "year"][1]:data[!, "year"][end]]
+    data
+end
 
-    # main loop
+
+function slice_chop(data, year_set)
+    sub_df = filter(:year => in(Set(year_set)), data)
+    year = min(year_set...)
+    freq = freqtable(sub_df, :firm, :tclass)
+    firms, tclasses = names(freq) # extract index from NamedMatrix
+    freq = convert(Matrix{eltype(freq)}, freq) # just keep the data
+    csvwrite(
+        "data/tmp/intermediate_$year.csv",
+        table(freq, header=tclasses)
+    )
+    @time std, cov_std, mal, cov_mal = compute_metrics(freq)
+    csvwrite(
+        "data/tmp/$(year)_tmp.csv",
+        DataFrame(
+            "std" => std,
+            "cov_std" => cov_std,
+            "mal" => mal,
+            "cov_mal" => cov_mal,
+            "firm" => firms,
+            "year" => year
+        )
+    )
+end
+
+function main()
+    config = parsefile("data/config.json")
+    input_file = config["input_data"]
+    output_file = config["output_data"]
+    iter_size = config["year_iteration"]
+
+    data = DataFrame(dtaload(input_file))
+    data = dataprep!(data)
+
+    csvwrite("data/tmp/intermediate.csv", data)
+
+    years = [year for year in data[!, "year"][1]:data[!, "year"][end]]
     for year_set in ProgressBar(Iterators.partition(years, iter_size))
-        sub_df = filter(:year => in(Set(year_set)), data)
-        year = min(year_set...)
-        freq = freqtable(sub_df, :firm, :tclass)
-        firms, tclasses = names(freq) # extract index from NamedMatrix
-        freq = convert(Matrix{eltype(freq)}, freq) # just keep the data
-        CSV.write(
-            "data/tmp/intermediate_$year.csv",
-            Tables.table(freq, header=tclasses)
-        )
-        std, cov_std, mal, cov_mal = compute_metrics(freq)
-        CSV.write(
-            "data/tmp/$(year)_tmp.csv",
-            DataFrame(
-                "std" => std,
-                "cov_std" => cov_std,
-                "mal" => mal,
-                "cov_mal" => cov_mal,
-                "firm" => firms,
-                "year" => year
-            )
-        )
+        slice_chop(data, year_set)
     end
 
     # merge all output files together
-    files = []
-    for file in readdir("data/tmp/")
-        if !endswith(file, "_tmp.csv") continue end
-        push!(files, CSV.read("data/tmp/$file", DataFrame))
-    end
-
-    CSV.write(output_file, vcat(files...))
+    files = [csvread("data/tmp/$file", DataFrame) for file in readdir("data/tmp/") if endswith(file, "_tmp.csv")]
+    csvwrite(output_file, vcat(files...))
 end
 
-export main
-
-end
+main()

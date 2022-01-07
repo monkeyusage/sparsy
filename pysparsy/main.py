@@ -111,8 +111,11 @@ def core(data: pd.DataFrame, iter_size: int, outfile: Path) -> None:
             data=subsh,
             index=firms.astype(np.int64),
             columns=[f"tclass_{i}" for i in range(subsh.shape[1])]
-        ).to_stata(f"data/intermediate_{year}.dta")
+        ).to_stata(f"data/tmp/intermediate_{year}.dta", write_index=False)
+        t0 = perf_counter()
         std, cov_std, mal, cov_mal = compute(subsh)
+        t1 = perf_counter()
+        print(t1 - t0)
         if outfile != Path(""):
             post_process(firms, year, std, cov_std, mal, cov_mal, outfile)
 
@@ -168,7 +171,7 @@ def main() -> None:
     data = data.sort_values("year")
 
     logging.info("saving intermediate file")
-    data.to_stata("data/intermediate.dta")
+    data.to_stata("data/tmp/intermediate.dta", write_index=False)
 
     logging.info("Launchung core computation")
     print(f"Computing with configurations: {input_file=}, {outfile=}, {iter_size=}")
