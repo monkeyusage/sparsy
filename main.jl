@@ -50,13 +50,26 @@ function dot_zero(matrix::Matrix{<:Number})::Array{Float32}
     # out = matrix * matrix'
     # out[diagind(out)] .= 0
     # out = sum(out, dims=2)
+
+    # write a version with while loop on unrolled matrix (1D) and get the same results
+    # this will help determining the i, j, k indices for GPU kernel creation
     out
 end
 
-function kernel(matrix)
-    a = threadIdx().x
-    b = blockIdx().y
-    x[]
+function kernel_example!(out, mat)
+    # this is the part we haev to figure out
+    # x = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+    if x < size(mat)[1]
+        @inbounds out[x] = mat[idx_k, ind_i] * mat[idx_i, idx_j]
+end
+
+function dot_zero_gpu(mat)
+    n = size(mat)[1]
+    out = CUDA.zeros(n)
+    threads = THREADS_PER_BLOCK
+    blocks = ceil(Int64, n/threads)
+
+    @cuda threads=threads blocks=blocks kernel_example!(out, mat)
 end
 
 function mahalanobis(biggie::Matrix{T}, small::Matrix{T})::Array{Float32} where {T<:Number}
@@ -83,6 +96,18 @@ function mahalanobis(biggie::Matrix{T}, small::Matrix{T})::Array{Float32} where 
     # out[diagind(out)] .= 0
     # out = sum(out, dims=2)
 end
+
+@kernel function k(out, inp, arg)
+    x_index, y_index = @index(Global, NTuple)
+    x_outidx = x_index + translation[1]
+    y_outidx = y_index + translation[2]
+    if x_index == y_index
+        out[x_outidx, y_outidx] = Float32(0)
+        return
+
+    end
+
+
 
 function compute_metrics(matrix::Matrix)::NTuple{4, Array{Float32}}
     α = (matrix ./ sum(matrix, dims=2))
