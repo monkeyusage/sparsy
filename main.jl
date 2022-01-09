@@ -30,21 +30,21 @@ function tclass_corr(matrix::Matrix{<:Number})::Matrix{<:Number}
     var
 end
 
-function dot_zero(matrix::Matrix{<:Number})::Array{Float32}
+function dot_zero(matrix::Matrix{Float32})::Array{Float32}
     X = Xp = size(matrix)[1]
     Y = size(matrix)[2]
 
     out = Array{Float32}(undef, X)
 
     Threads.@threads for k in 1:X
-        total = Float32(0)
+        total = zero(Float32)
         for i in 1:Xp
             if i == k continue end
             for j in 1:Y
                 @inbounds total = matrix[k, j] * matrix[i, j] + total
             end
         end
-        out[k] = total
+        @inbounds out[k] = total
     end
 
     # # vectorized version
@@ -67,7 +67,8 @@ end
 
 function kernel_matmul(C, A, B)
     """ 
-        Compute C = A * B with
+        M (n, m)
+        Compute C = A * B with shapes
             C[m,n] = A[m,p] * B[p,n]
     """    
     tx = (blockIdx().x-1) * blockDim().x + threadIdx().x
@@ -77,7 +78,7 @@ function kernel_matmul(C, A, B)
     _, n = size(B)
     
     Cvalue = 0.0f0
-  
+
     if (tx <= n) && (ty <= m)
       for k = 1:p
         Cvalue += A[(ty-1)*p + k]*B[(k-1)*n + tx]
@@ -89,7 +90,7 @@ function kernel_matmul(C, A, B)
     return nothing
 end
 
-""" Compute C = A * B """
+""" Compute C = sum(A * B, dims=2) """
 function kernel_matmul_fast(C, A, B, m, p)
     tx = threadIdx().x
 
@@ -104,25 +105,24 @@ function kernel_matmul_fast(C, A, B, m, p)
 
     # Initialize shared memory for B
     if tx == 1
-    for j in 1:p
-        @inbounds sB[j] = B[j]
-    end
+        for j in 1:p
+            @inbounds sB[j] = B[j]
+        end
     end
 
     # Wait until all threads finish preloading
     sync_threads()
 
-    for j in 1:2000
-    Cvalue = 0.0f0
-
-    if tx <= m
-        for i = 1:p
-        @inbounds Cvalue += sA[tx, i] * sB[i]
-        #@cuprintln("tx $tx, i $i, res: $(A[tx, i] * B[i])")
+    for _ in 1:2000
+        Cvalue = 0.0f0
+        if tx <= m
+            for i = 1:p
+                @inbounds Cvalue += sA[tx, i] * sB[i]
+                #@cuprintln("tx $tx, i $i, res: $(A[tx, i] * B[i])")
+            end
+            @inbounds C[tx] = Cvalue
+            #@cuprintln(C[tx])
         end
-        @inbounds C[tx] = Cvalue
-        #@cuprintln(C[tx])
-    end
     end
 
     return nothing
