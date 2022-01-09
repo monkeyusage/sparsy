@@ -31,16 +31,16 @@ function tclass_corr(matrix::Matrix{<:Number})::Matrix{<:Number}
 end
 
 function dot_zero(matrix::Matrix{<:Number})::Array{Float32}
-    K = I = size(matrix)[1]
-    J = size(matrix)[2]
+    X = Xp = size(matrix)[1]
+    Y = size(matrix)[2]
 
-    out = Array{Float32}(undef, K)
+    out = Array{Float32}(undef, X)
 
-    Threads.@threads for k in 1:K
+    Threads.@threads for k in 1:X
         total = Float32(0)
-        for i in 1:I
+        for i in 1:Xp
             if i == k continue end
-            for j in 1:J
+            for j in 1:Y
                 @inbounds total = matrix[k, j] * matrix[i, j] + total
             end
         end
@@ -64,6 +64,69 @@ end
 #         @inbounds out[x] = mat[idx_k, ind_i] * mat[idx_i, idx_j]
 #     end
 # end
+
+function kernel_matmul(C, A, B)
+    """ 
+        Compute C = A * B with
+            C[m,n] = A[m,p] * B[p,n]
+    """    
+    tx = (blockIdx().x-1) * blockDim().x + threadIdx().x
+    ty = (blockIdx().y-1) * blockDim().y + threadIdx().y
+    
+    m, p = size(A)
+    _, n = size(B)
+    
+    Cvalue = 0.0f0
+  
+    if (tx <= n) && (ty <= m)
+      for k = 1:p
+        Cvalue += A[(ty-1)*p + k]*B[(k-1)*n + tx]
+        #Cvalue += A[(tx-1)*p + k]*B[(k-1)*m + ty]
+      end
+      # Write the matrix to device memory; each thread writes one element
+      C[(ty-1)*n + tx] = Cvalue
+    end
+    return nothing
+end
+
+""" Compute C = A * B """
+function kernel_matmul_fast(C, A, B, m, p)
+    tx = threadIdx().x
+
+    # Important: The second @cuDynamicSharedMem allocation needs an offset of sizeof(sA), as it uses a single kernel-level buffer
+    sA = @cuDynamicSharedMem(Float32, (m,p))
+    sB = @cuDynamicSharedMem(Float32, p, sizeof(sA))
+
+    # Initialize shared memory for A
+    for j in 1:p
+        @inbounds sA[tx, j] = A[tx, j]
+    end
+
+    # Initialize shared memory for B
+    if tx == 1
+    for j in 1:p
+        @inbounds sB[j] = B[j]
+    end
+    end
+
+    # Wait until all threads finish preloading
+    sync_threads()
+
+    for j in 1:2000
+    Cvalue = 0.0f0
+
+    if tx <= m
+        for i = 1:p
+        @inbounds Cvalue += sA[tx, i] * sB[i]
+        #@cuprintln("tx $tx, i $i, res: $(A[tx, i] * B[i])")
+        end
+        @inbounds C[tx] = Cvalue
+        #@cuprintln(C[tx])
+    end
+    end
+
+    return nothing
+end
 
 # function dot_zero_gpu(mat)
 #     n = size(mat)[1]
