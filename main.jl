@@ -47,11 +47,10 @@ function dot_zero(matrix::Matrix{Float32})::Array{Float32}
         @inbounds out[k] = total
     end
 
-    # # vectorized version
+    # # vectorized version M (n, m) => NM (n, n) => n
     # out = matrix * matrix'
     # out[diagind(out)] .= 0
     # out = sum(out, dims=2)
-
     # write a version with while loop on unrolled matrix (1D) and get the same results
     # this will help determining the i, j, k indices for GPU kernel creation
     out
@@ -101,7 +100,7 @@ function kernel_matmul_fast(C, A, B, m, p)
     # Initialize shared memory for A
     for j in 1:p
         @inbounds sA[tx, j] = A[tx, j]
-    end
+    end 
 
     # Initialize shared memory for B
     if tx == 1
@@ -113,7 +112,7 @@ function kernel_matmul_fast(C, A, B, m, p)
     # Wait until all threads finish preloading
     sync_threads()
 
-    for _ in 1:2000
+    for _ in 1:size(A)[1]
         Cvalue = 0.0f0
         if tx <= m
             for i = 1:p
@@ -183,8 +182,9 @@ end
 
 function dataprep!(data::DataFrame)::DataFrame
     data = data[:, ["year", "firm", "nclass"]]
-    data[!, "year"] = map(UInt16, data[!, "year"])
+    data[!, "year"] = map(Int16, data[!, "year"])
     data[!, "nclass"] = map(UInt32, data[!, "nclass"])
+    data[!, "firm"] = parse.(Int, data[!, "firm"])
 
     # replace nclass by tclass and save mapping to json
     replacements = get_replacements(data[!, "nclass"])
@@ -200,9 +200,9 @@ function dataprep!(data::DataFrame)::DataFrame
 end
 
 
-function slice_chop(data, year_set)
+function slice_chop(data::DataFrame, weight::DataFrame, year_set::Array{UInt16})
     sub_df = filter(:year => in(Set(year_set)), data)
-    year = min(year_set...)
+    year = max(year_set...)
     freq = freqtable(sub_df, :firm, :tclass)
     firms, tclasses = names(freq) # extract index from NamedMatrix
     freq = convert(Matrix{eltype(freq)}, freq) # just keep the data
@@ -210,7 +210,7 @@ function slice_chop(data, year_set)
         "data/tmp/intermediate_$year.csv",
         table(freq, header=tclasses)
     )
-    @time std, cov_std, mal, cov_mal = compute_metrics(freq)
+    @time std, cov_std, mal, cov_mal = map((metric) -> weight * metric, compute_metrics(freq))
     csvwrite(
         "data/tmp/$(year)_tmp.csv",
         DataFrame(
@@ -227,10 +227,12 @@ end
 function main()
     config = parsefile("data/config.json")
     input_file = config["input_data"]
+    weights_file = config["weight_data"]
     output_file = config["output_data"]
     iter_size = config["year_iteration"]
 
     data = DataFrame(dtaload(input_file))
+    weights = DataFrame(dtaload(weights_file))
     data = dataprep!(data)
 
     csvwrite("data/tmp/intermediate.csv", data)
