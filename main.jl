@@ -180,11 +180,15 @@ function compute_metrics(matrix::Matrix)::NTuple{4, Array{Float32}}
     std, cov_std, ma, cov_ma
 end
 
-function dataprep!(data::DataFrame)::DataFrame
+function dataprep!(data::DataFrame, weights::DataFrame)::NTuple{DataFrame, 2}
     data = data[:, ["year", "firm", "nclass"]]
     data[!, "year"] = map(Int16, data[!, "year"])
     data[!, "nclass"] = map(UInt32, data[!, "nclass"])
     data[!, "firm"] = parse.(Int, data[!, "firm"])
+
+    weights[!, "year"] = map(Int16, weights[!, "year"])
+    weights[!, "weight"] = map(Float32, weights[!, "weight"])
+    weights[!, "firmid"] = parse.(Int, weights[!, "firmid"])
 
     # replace nclass by tclass and save mapping to json
     replacements = get_replacements(data[!, "nclass"])
@@ -194,14 +198,17 @@ function dataprep!(data::DataFrame)::DataFrame
 
     replace!(data[!, "nclass"], replacements...) # replace nclass to be tclass
     rename!(data, "nclass" => "tclass") # rename nclass to tclass
-    sort!(data, "year") # sort by year
+    sort!(data, ["year", "firm"]) # sort by year and firmid
+
+    sort!(weights, ["year", "firmid"])
 
     data
 end
 
 
-function slice_chop(data::DataFrame, weight::DataFrame, year_set::Array{UInt16})
+function slice_chop(data::DataFrame, weights::DataFrame, year_set::Array{UInt16})
     sub_df = filter(:year => in(Set(year_set)), data)
+    sub_weights = filter(:year => in(Set(year_set)), weights)
     year = max(year_set...)
     freq = freqtable(sub_df, :firm, :tclass)
     firms, tclasses = names(freq) # extract index from NamedMatrix
@@ -210,7 +217,7 @@ function slice_chop(data::DataFrame, weight::DataFrame, year_set::Array{UInt16})
         "data/tmp/intermediate_$year.csv",
         table(freq, header=tclasses)
     )
-    @time std, cov_std, mal, cov_mal = map((metric) -> weight * metric, compute_metrics(freq))
+    @time std, cov_std, mal, cov_mal = compute_metrics(freq)
     csvwrite(
         "data/tmp/$(year)_tmp.csv",
         DataFrame(
@@ -233,13 +240,13 @@ function main()
 
     data = DataFrame(dtaload(input_file))
     weights = DataFrame(dtaload(weights_file))
-    data = dataprep!(data)
+    data, weights = dataprep!(data, weights)
 
     csvwrite("data/tmp/intermediate.csv", data)
 
     years = [year for year in data[!, "year"][1]:data[!, "year"][end]]
     for year_set in ProgressBar(Iterators.partition(years, iter_size))
-        slice_chop(data, year_set)
+        slice_chop(data, weights, year_set)
     end
 
     # merge all output files together

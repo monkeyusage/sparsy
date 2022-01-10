@@ -1,5 +1,0 @@
-pandas
-numpy
-tqdm
-psutil
-Cython

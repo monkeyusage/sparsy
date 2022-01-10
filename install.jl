@@ -1,23 +1,24 @@
 import Pkg
 
+libraries = [
+    "JSON",
+    "DataFrames",
+    "StatFiles",
+    "CSV",
+    "BenchmarkTools",
+    "ProgressBars",
+    "FreqTables",
+    "Debugger"
+]
+
+for pkg in libraries
+    Pkg.add(pkg)
+end
+
+import JSON:json
+
+
 function main()::Nothing
-    libraries = [
-        "JSON",
-        "DataFrames",
-        "StatFiles",
-        "CSV",
-        "BenchmarkTools",
-        "ProgressBars",
-        "FreqTables",
-        "Debugger"
-    ]
-
-    for pkg in libraries
-        Pkg.add(pkg)
-    end
-
-    using JSON:json
-
     mkpath("data/tmp")
     open("data/config.json", "w") do f
         config = Dict(
@@ -26,7 +27,7 @@ function main()::Nothing
             "output_data"=> "data/output.dta",
             "year_iteration" => 3
         )
-        write(f, json(config, 4, sort_keys=true))
+        write(f, json(config, 4))
     end
     return nothing
 end
