@@ -5,6 +5,7 @@ using DataFrames: DataFrame, replace!, rename!, sort!
 using ProgressBars: ProgressBar
 using FreqTables: freqtable
 using Tables: table
+using CUDA
 
 function get_replacements(classes::Vector{T})::Dict{T, UInt64} where {T<:Number}
     # map unique elements to ints
@@ -15,128 +16,79 @@ function get_replacements(classes::Vector{T})::Dict{T, UInt64} where {T<:Number}
     replacements
 end
 
-function tclass_corr(matrix::Matrix{<:Number})::Matrix{<:Number}
+function tclass_corr(matrix::Array{T, 2})::Array{T, 2} where {T<:Number}
     var = matrix'matrix
     base_var = copy(var)
     s = size(var)[1]
-    for i in 1:s
-        for j in 1:s
-            if var[i,i] == 0 || var[j,j] == 0
-                continue
-            end
-            var[i,j] = var[i, j] / (sqrt(base_var[i,i]) * sqrt(base_var[j,j]))
+    @inbounds @simd for i in 1:s
+        @inbounds @simd for j in 1:s 
+            var[i, j] = var[i,i] == 0 || var[j,j] == 0 ? 1 : var[i, j] / (sqrt(base_var[i,i]) * sqrt(base_var[j,j]))
         end
     end
     var
 end
 
-function dot_zero(matrix::Matrix{Float32})::Array{Float32}
-    X = Xp = size(matrix)[1]
-    Y = size(matrix)[2]
+function dot_zero(matrix::Array{Float32, 2})::Array{Float32}
+    """
+    # vectorized version of the following operations with M (n, m) => NM (n, n) => n
+    out = matrix * matrix' => creates a matrix we cannot store in RAM
+    out[diagind(out)] .= 0
+    out = sum(out, dims=2)
+    """
+    X, Y = Xp, _ = size(matrix)
 
-    out = Array{Float32}(undef, X)
+    out = Array{Float32, 1}(undef, X)
 
-    Threads.@threads for k in 1:X
+    Threads.@threads for x in 1:X
         total = zero(Float32)
-        for i in 1:Xp
-            if i == k continue end
-            for j in 1:Y
-                @inbounds total = matrix[k, j] * matrix[i, j] + total
+        @inbounds for xp in 1:Xp
+            @inbounds @simd for y in 1:Y
+                total = (xp == x) ? total : (total + matrix[x, y] * matrix[xp, y])
             end
         end
-        @inbounds out[k] = total
+        @inbounds out[x] = total
     end
-
-    # # vectorized version M (n, m) => NM (n, n) => n
-    # out = matrix * matrix'
-    # out[diagind(out)] .= 0
-    # out = sum(out, dims=2)
-    # write a version with while loop on unrolled matrix (1D) and get the same results
-    # this will help determining the i, j, k indices for GPU kernel creation
     out
 end
 
-# function kernel_example!(out, mat)
-#     # this is the part we haev to figure out
-#     # x = (blockIdx().x - 1) * blockDim().x + threadIdx().x
-#     if x < size(mat)[1]
-#         @inbounds out[x] = mat[idx_k, ind_i] * mat[idx_i, idx_j]
-#     end
-# end
+function dot_zero_gpu_kernel!(mat::CuArray{Float32, 2}, out::CuArray{Float32, 1})::Nothing
+    X, Y = Xp, _ = size(mat)
 
-function kernel_matmul(C, A, B)
-    """ 
-        M (n, m)
-        Compute C = A * B with shapes
-            C[m,n] = A[m,p] * B[p,n]
-    """    
-    tx = (blockIdx().x-1) * blockDim().x + threadIdx().x
-    ty = (blockIdx().y-1) * blockDim().y + threadIdx().y
-    
-    m, p = size(A)
-    _, n = size(B)
-    
-    Cvalue = 0.0f0
+    row = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+    col = (blockIdx().y - 1) * blockDim().y +threadIdx().y
 
-    if (tx <= n) && (ty <= m)
-      for k = 1:p
-        Cvalue += A[(ty-1)*p + k]*B[(k-1)*n + tx]
-        #Cvalue += A[(tx-1)*p + k]*B[(k-1)*m + ty]
-      end
-      # Write the matrix to device memory; each thread writes one element
-      C[(ty-1)*n + tx] = Cvalue
-    end
-    return nothing
-end
-
-""" Compute C = sum(A * B, dims=2) """
-function kernel_matmul_fast(C, A, B, m, p)
-    tx = threadIdx().x
-
-    # Important: The second @cuDynamicSharedMem allocation needs an offset of sizeof(sA), as it uses a single kernel-level buffer
-    sA = @cuDynamicSharedMem(Float32, (m,p))
-    sB = @cuDynamicSharedMem(Float32, p, sizeof(sA))
-
-    # Initialize shared memory for A
-    for j in 1:p
-        @inbounds sA[tx, j] = A[tx, j]
-    end 
-
-    # Initialize shared memory for B
-    if tx == 1
-        for j in 1:p
-            @inbounds sB[j] = B[j]
-        end
-    end
-
-    # Wait until all threads finish preloading
-    sync_threads()
-
-    for _ in 1:size(A)[1]
-        Cvalue = 0.0f0
-        if tx <= m
-            for i = 1:p
-                @inbounds Cvalue += sA[tx, i] * sB[i]
-                #@cuprintln("tx $tx, i $i, res: $(A[tx, i] * B[i])")
+    if (row < X) && (col < Y)
+        @inbounds for x in 0:(X-1)
+            total = zero(Float32)
+            @inbounds for xp in 0:(Xp-1)
+                if xp == x continue end
+                @inbounds @simd for y in 0:(Y-1)
+                    total += mat[x, y] * mat[xp, y]
+                    # total += mat[(row*X) + y] * mat[(xp + y]
+                end
             end
-            @inbounds C[tx] = Cvalue
-            #@cuprintln(C[tx])
+            @inbounds out[x] = total
         end
     end
 
     return nothing
 end
 
-# function dot_zero_gpu(mat)
-#     n = size(mat)[1]
-#     out = CUDA.zeros(n)
-#     threads = THREADS_PER_BLOCK
-#     blocks = ceil(Int64, n/threads)
+function dot_zero(matrix::CuArray{Float32, 2})::CuArray{Float32, 1}
+    blocks, threads = size(matrix)
+    out = CUDA.zeros(Float32, blocks)
 
-#     @cuda threads=threads blocks=blocks kernel_example!(out, mat)
-# end
+    @cuda threads=threads blocks=blocks dot_zero_gpu_kernel!(matrix, out)
+    return out
+end
 
 function mahalanobis(biggie::Matrix{T}, small::Matrix{T})::Array{Float32} where {T<:Number}
+    """
+    # vectorized version of the following operations
+    out = biggie * (small * biggie')
+    out[diagind(out)] .= 0
+    out = sum(out, dims=2)
+    """
     K = size(biggie)[1]
     J = size(biggie)[2]
     I = size(small)[2]
@@ -145,20 +97,15 @@ function mahalanobis(biggie::Matrix{T}, small::Matrix{T})::Array{Float32} where 
 
     Threads.@threads for k in 1:K
         total = Float32(0)
-        for i in 1:I
+        @inbounds for i in 1:I
             if i == k continue end
-            for j in 1:J
-                @inbounds total = biggie[k, j] * small[j, i] + total
+            @inbounds @simd for j in 1:J
+                total += biggie[k, j] * small[j, i]
             end
         end
-        out[k] = total
+        @inbounds out[k] = total
     end
     out
-
-    # # vectorixed version
-    # out = biggie * (small * biggie')
-    # out[diagind(out)] .= 0
-    # out = sum(out, dims=2)
 end
 
 function compute_metrics(matrix::Matrix)::NTuple{4, Array{Float32}}
