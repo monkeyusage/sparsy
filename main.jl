@@ -28,7 +28,7 @@ function tclass_corr(matrix::Array{T, 2})::Array{T, 2} where {T<:Number}
     var
 end
 
-function dot_zero(matrix::Array{Float32, 2})::Array{Float32}
+function dot_zero(matrix::Array{Float32, 2}, ω::Array{Float32, 2})::Array{Float32}
     """
     # vectorized version of the following operations with M (n, m) => NM (n, n) => n
     out = matrix * matrix' => creates a matrix we cannot store in RAM
@@ -149,7 +149,7 @@ function dataprep!(data::DataFrame, weights::DataFrame)::NTuple{DataFrame, 2}
 
     sort!(weights, ["year", "firmid"])
 
-    data
+    data, weights
 end
 
 
