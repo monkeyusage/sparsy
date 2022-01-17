@@ -31,3 +31,6 @@ function main()::Nothing
     end
     return nothing
 end
+
+main()
+

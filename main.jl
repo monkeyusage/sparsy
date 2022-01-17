@@ -1,11 +1,12 @@
 using JSON: json, parsefile
 using StatFiles: load as dtaload
 using CSV: write as csvwrite, read as csvread
-using DataFrames: DataFrame, replace!, rename!, sort!
+using DataFrames: DataFrame, replace!, rename!, sort!, groupby, combine
 using ProgressBars: ProgressBar
 using FreqTables: freqtable
 using Tables: table
-using CUDA
+using CUDA: CuArray, @cuda
+using Statistics: mean
 
 function get_replacements(classes::Vector{T})::Dict{T, UInt64} where {T<:Number}
     # map unique elements to ints
@@ -13,7 +14,7 @@ function get_replacements(classes::Vector{T})::Dict{T, UInt64} where {T<:Number}
     for (tclass, nclass) in enumerate(unique(classes))
         replacements[nclass] = tclass
     end
-    replacements
+    return replacements
 end
 
 function tclass_corr(matrix::Array{T, 2})::Array{T, 2} where {T<:Number}
@@ -25,10 +26,10 @@ function tclass_corr(matrix::Array{T, 2})::Array{T, 2} where {T<:Number}
             var[i, j] = var[i,i] == 0 || var[j,j] == 0 ? 1 : var[i, j] / (sqrt(base_var[i,i]) * sqrt(base_var[j,j]))
         end
     end
-    var
+    return var
 end
 
-function dot_zero(matrix::Array{Float32, 2}, ω::Array{Float32, 2})::Array{Float32}
+function dot_zero(matrix::Array{Float32, 2}, weights::Array{Float32, 1})::Array{Float32}
     """
     # vectorized version of the following operations with M (n, m) => NM (n, n) => n
     out = matrix * matrix' => creates a matrix we cannot store in RAM
@@ -43,12 +44,12 @@ function dot_zero(matrix::Array{Float32, 2}, ω::Array{Float32, 2})::Array{Float
         total = zero(Float32)
         @inbounds for xp in 1:Xp
             @inbounds @simd for y in 1:Y
-                total = (xp == x) ? total : (total + matrix[x, y] * matrix[xp, y])
+                total = (xp == x) ? total : (total + (matrix[x, y] * matrix[xp, y]) * weights[x])
             end
         end
         @inbounds out[x] = total
     end
-    out
+    return out
 end
 
 function dot_zero_gpu_kernel!(mat::CuArray{Float32, 2}, out::CuArray{Float32, 1})::Nothing
@@ -70,7 +71,6 @@ function dot_zero_gpu_kernel!(mat::CuArray{Float32, 2}, out::CuArray{Float32, 1}
             @inbounds out[x] = total
         end
     end
-
     return nothing
 end
 
@@ -82,7 +82,7 @@ function dot_zero(matrix::CuArray{Float32, 2})::CuArray{Float32, 1}
     return out
 end
 
-function mahalanobis(biggie::Matrix{T}, small::Matrix{T})::Array{Float32} where {T<:Number}
+function mahalanobis(biggie::Array{Float32, 2}, small::Array{Float32, 2}, weights::Array{Float32, 1})::Array{Float32}
     """
     # vectorized version of the following operations
     out = biggie * (small * biggie')
@@ -100,17 +100,17 @@ function mahalanobis(biggie::Matrix{T}, small::Matrix{T})::Array{Float32} where 
         @inbounds for i in 1:I
             if i == k continue end
             @inbounds @simd for j in 1:J
-                total += biggie[k, j] * small[j, i]
+                total += (biggie[k, j] * small[j, i]) * weights[k]
             end
         end
         @inbounds out[k] = total
     end
-    out
+    return out
 end
 
-function compute_metrics(matrix::Matrix)::NTuple{4, Array{Float32}}
+function compute_metrics(matrix::AbstractArray{Float32, 2}, weights::Array{Float32})::NTuple{4, Array{Float32}}
     α = (matrix ./ sum(matrix, dims=2))
-    # scale down precision to 32 bits / 16 bits breaks
+    # scale down precision to 32 bits
     α = convert(Matrix{Float32}, α)
     
     β = tclass_corr(α)
@@ -118,16 +118,16 @@ function compute_metrics(matrix::Matrix)::NTuple{4, Array{Float32}}
     ω = α ./ sqrt.(sum(α .* α, dims=2))
 
     # generate std measures
-    std = dot_zero(ω)
-    cov_std = dot_zero(α)
+    std = dot_zero(ω, weights)
+    cov_std = dot_zero(α, weights)
 
     # # generate mahalanobis measure
-    ma = mahalanobis(ω, β*ω')
-    cov_ma = mahalanobis(α, β*α')
-    std, cov_std, ma, cov_ma
+    ma = mahalanobis(ω, β*ω', weights)
+    cov_ma = mahalanobis(α, β*α', weights)
+    return std, cov_std, ma, cov_ma
 end
 
-function dataprep!(data::DataFrame, weights::DataFrame)::NTuple{DataFrame, 2}
+function dataprep!(data::DataFrame, weights::DataFrame)::NTuple{2, DataFrame}
     data = data[:, ["year", "firm", "nclass"]]
     data[!, "year"] = map(Int16, data[!, "year"])
     data[!, "nclass"] = map(UInt32, data[!, "nclass"])
@@ -149,24 +149,32 @@ function dataprep!(data::DataFrame, weights::DataFrame)::NTuple{DataFrame, 2}
 
     sort!(weights, ["year", "firmid"])
 
-    data, weights
+    return data, weights
 end
 
 
-function slice_chop(data::DataFrame, weights::DataFrame, year_set::Array{UInt16})
-    sub_df = filter(:year => in(Set(year_set)), data)
-    sub_weights = filter(:year => in(Set(year_set)), weights)
+function slice_chop(data::DataFrame, weights::DataFrame, year_set)::Nothing
+    sub_df = filter(:year => in(year_set), data)
+    sub_weights = filter(:year => in(year_set), weights)
     year = max(year_set...)
     freq = freqtable(sub_df, :firm, :tclass)
-    firms, tclasses = names(freq) # extract index from NamedMatrix
-    freq = convert(Matrix{eltype(freq)}, freq) # just keep the data
+    firms, tclasses = names(freq)
+    freq = convert(Array{Float32}, freq)
+
+    weights_avg = combine(groupby(sub_weights, [:firmid])) do grouped
+        mean(grouped[!, "weight"])
+    end
+
+    weights_avg = weights_avg[!, "x1"]
+
     csvwrite(
         "data/tmp/intermediate_$year.csv",
         table(freq, header=tclasses)
     )
-    @time std, cov_std, mal, cov_mal = compute_metrics(freq)
-    csvwrite(
-        "data/tmp/$(year)_tmp.csv",
+    
+    @time std, cov_std, mal, cov_mal = compute_metrics(freq, weights_avg)
+    
+    csvwrite("data/tmp/$(year)_tmp.csv",
         DataFrame(
             "std" => std,
             "cov_std" => cov_std,
@@ -176,6 +184,7 @@ function slice_chop(data::DataFrame, weights::DataFrame, year_set::Array{UInt16}
             "year" => year
         )
     )
+    return nothing
 end
 
 function main()
@@ -191,8 +200,9 @@ function main()
 
     csvwrite("data/tmp/intermediate.csv", data)
 
-    years = [year for year in data[!, "year"][1]:data[!, "year"][end]]
-    for year_set in ProgressBar(Iterators.partition(years, iter_size))
+    year_range = [year for year in min(data[!, "year"]...):max(data[!, "year"]...)]
+    years = [Set(year_range[i:i+iter_size]) for i in eachindex(year_range) if i + iter_size < length(year_range)]
+    for year_set in ProgressBar(years)
         slice_chop(data, weights, year_set)
     end
 
