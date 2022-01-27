@@ -155,8 +155,8 @@ end
 
 function slice_chop(data::DataFrame, weights::DataFrame, year_set)::Nothing
     sub_df = filter(:year => in(year_set), data)
-    sub_weights = filter(:year => in(year_set), weights)
     year = max(year_set...)
+    sub_weights = filter(:year => ==(year), weights)
     freq = freqtable(sub_df, :firm, :tclass)
     firms, tclasses = names(freq)
     freq = convert(Array{Float32}, freq)
@@ -167,10 +167,10 @@ function slice_chop(data::DataFrame, weights::DataFrame, year_set)::Nothing
 
     weights_avg = weights_avg[!, "x1"]
 
-    csvwrite(
-        "data/tmp/intermediate_$year.csv",
-        table(freq, header=tclasses)
-    )
+    # csvwrite(
+    #     "data/tmp/intermediate_$year.csv",
+    #     table(freq, header=tclasses)
+    # )
     
     @time std, cov_std, mal, cov_mal = compute_metrics(freq, weights_avg)
     
