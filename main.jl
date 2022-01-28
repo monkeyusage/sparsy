@@ -108,7 +108,7 @@ function mahalanobis(biggie::Array{Float32, 2}, small::Array{Float32, 2}, weight
     return out
 end
 
-function compute_metrics(matrix::AbstractArray{Float32, 2}, weights::Array{Float32})::NTuple{4, Array{Float32}}
+function compute_metrics(matrix::AbstractArray{Float32, 2}, weight::Array{Float32})::NTuple{4, Array{Float32}}
     α = (matrix ./ sum(matrix, dims=2))
     # scale down precision to 32 bits
     α = convert(Matrix{Float32}, α)
@@ -118,12 +118,12 @@ function compute_metrics(matrix::AbstractArray{Float32, 2}, weights::Array{Float
     ω = α ./ sqrt.(sum(α .* α, dims=2))
 
     # generate std measures
-    std = dot_zero(ω, weights)
-    cov_std = dot_zero(α, weights)
+    std = dot_zero(ω, weight)
+    cov_std = dot_zero(α, weight)
 
     # # generate mahalanobis measure
-    ma = mahalanobis(ω, β*ω', weights)
-    cov_ma = mahalanobis(α, β*α', weights)
+    ma = mahalanobis(ω, β*ω', weight)
+    cov_ma = mahalanobis(α, β*α', weight)
     return std, cov_std, ma, cov_ma
 end
 
@@ -153,26 +153,25 @@ function dataprep!(data::DataFrame, weights::DataFrame)::NTuple{2, DataFrame}
 end
 
 
-function slice_chop(data::DataFrame, weights::DataFrame, year_set)::Nothing
+function slice_chop(data::DataFrame, weights::DataFrame, year_set::Set{UInt16}, no_weight::Bool = False)::Nothing
     sub_df = filter(:year => in(year_set), data)
     year = max(year_set...)
-    sub_weights = filter(:year => ==(year), weights)
-    freq = freqtable(sub_df, :firm, :tclass)
-    firms, tclasses = names(freq)
-    freq = convert(Array{Float32}, freq)
+    sub_weights = !no_weight ? filter(:year => ==(year), weights) : DataFrame(:weight => ones(Float32, size(sub_df)[1]))
 
-    weights_avg = combine(groupby(sub_weights, [:firmid])) do grouped
-        mean(grouped[!, "weight"])
+    if isempty(sub_df) | isempty(sub_weights)
+        return nothing
     end
 
-    weights_avg = weights_avg[!, "x1"]
+    freq = freqtable(sub_df, :firm, :tclass)
+    firms, _ = names(freq)
+    freq = convert(Array{Float32}, freq)
+    weight = sub_weights[!, "weight"]
 
-    # csvwrite(
-    #     "data/tmp/intermediate_$year.csv",
-    #     table(freq, header=tclasses)
-    # )
+    sf = size(freq)[1]
+    sw = size(weight)[1]
+    @assert(sf == sw, "matrices shapes do not match $sf & $sw")
     
-    @time std, cov_std, mal, cov_mal = compute_metrics(freq, weights_avg)
+    @time std, cov_std, mal, cov_mal = compute_metrics(freq, weight)
     
     csvwrite("data/tmp/$(year)_tmp.csv",
         DataFrame(
@@ -187,7 +186,7 @@ function slice_chop(data::DataFrame, weights::DataFrame, year_set)::Nothing
     return nothing
 end
 
-function main()
+function main(args)
     config = parsefile("data/config.json")
     input_file = config["input_data"]
     weights_file = config["weight_data"]
@@ -195,15 +194,23 @@ function main()
     iter_size = config["year_iteration"]
 
     data = DataFrame(dtaload(input_file))
+
+    # if ("no-weight" in args) | weights_file == ""
+    #     DataFrame(ones(Float32, size(data)))
+    # end
+
     weights = DataFrame(dtaload(weights_file))
     data, weights = dataprep!(data, weights)
 
     csvwrite("data/tmp/intermediate.csv", data)
 
-    year_range = [year for year in min(data[!, "year"]...):max(data[!, "year"]...)]
-    years = [Set(year_range[i:i+iter_size]) for i in eachindex(year_range) if i + iter_size < length(year_range)]
+    year_range = [UInt16(year) for year in min(data[!, "year"]...):max(data[!, "year"]...)]
+    years = [Set(year_range[i:i+iter_size-1]) for i in eachindex(year_range) if i + iter_size < length(year_range)]
+    
+    no_weight = ("no-weight" in args) | (weights_file == "")
+
     for year_set in ProgressBar(years)
-        slice_chop(data, weights, year_set)
+        slice_chop(data, weights, year_set, no_weight)
     end
 
     # merge all output files together
@@ -211,4 +218,4 @@ function main()
     csvwrite(output_file, vcat(files...))
 end
 
-main()
+main(ARGS)
