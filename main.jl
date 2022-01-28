@@ -127,15 +127,11 @@ function compute_metrics(matrix::AbstractArray{Float32, 2}, weight::Array{Float3
     return std, cov_std, ma, cov_ma
 end
 
-function dataprep!(data::DataFrame, weights::DataFrame)::NTuple{2, DataFrame}
+function dataprep!(data::DataFrame, weights::DataFrame, no_weight::Bool=false)::NTuple{2, DataFrame}
     data = data[:, ["year", "firm", "nclass"]]
     data[!, "year"] = map(Int16, data[!, "year"])
     data[!, "nclass"] = map(UInt32, data[!, "nclass"])
     data[!, "firm"] = parse.(Int, data[!, "firm"])
-
-    weights[!, "year"] = map(Int16, weights[!, "year"])
-    weights[!, "weight"] = map(Float32, weights[!, "weight"])
-    weights[!, "firmid"] = parse.(Int, weights[!, "firmid"])
 
     # replace nclass by tclass and save mapping to json
     replacements = get_replacements(data[!, "nclass"])
@@ -147,24 +143,30 @@ function dataprep!(data::DataFrame, weights::DataFrame)::NTuple{2, DataFrame}
     rename!(data, "nclass" => "tclass") # rename nclass to tclass
     sort!(data, ["year", "firm"]) # sort by year and firmid
 
-    sort!(weights, ["year", "firmid"])
+    if !no_weight
+        sort!(weights, ["year", "firmid"])
+        weights[!, "year"] = map(Int16, weights[!, "year"])
+        weights[!, "weight"] = map(Float32, weights[!, "weight"])
+        weights[!, "firmid"] = parse.(Int, weights[!, "firmid"])
+    end
 
     return data, weights
 end
 
 
-function slice_chop(data::DataFrame, weights::DataFrame, year_set::Set{UInt16}, no_weight::Bool = False)::Nothing
+function slice_chop(data::DataFrame, weights::DataFrame, year_set::Set{UInt16}, no_weight::Bool = false)::Nothing
     sub_df = filter(:year => in(year_set), data)
     year = max(year_set...)
-    sub_weights = !no_weight ? filter(:year => ==(year), weights) : DataFrame(:weight => ones(Float32, size(sub_df)[1]))
-
-    if isempty(sub_df) | isempty(sub_weights)
-        return nothing
-    end
 
     freq = freqtable(sub_df, :firm, :tclass)
     firms, _ = names(freq)
     freq = convert(Array{Float32}, freq)
+
+    sub_weights = !no_weight ? filter(:year => ==(year), weights) : DataFrame(:weight => ones(Float32, size(freq)[1]))
+
+    if isempty(sub_df) | isempty(sub_weights)
+        return nothing
+    end
     weight = sub_weights[!, "weight"]
 
     sf = size(freq)[1]
@@ -195,19 +197,15 @@ function main(args)
 
     data = DataFrame(dtaload(input_file))
 
-    # if ("no-weight" in args) | weights_file == ""
-    #     DataFrame(ones(Float32, size(data)))
-    # end
+    no_weight = ("no-weight" in args) | (weights_file == "")
 
-    weights = DataFrame(dtaload(weights_file))
-    data, weights = dataprep!(data, weights)
+    weights = !no_weight ? DataFrame(dtaload(weights_file)) : DataFrame(:weight => ones(Float32, size(data)[1]))
+    data, weights = dataprep!(data, weights, no_weight)
 
     csvwrite("data/tmp/intermediate.csv", data)
 
     year_range = [UInt16(year) for year in min(data[!, "year"]...):max(data[!, "year"]...)]
     years = [Set(year_range[i:i+iter_size-1]) for i in eachindex(year_range) if i + iter_size < length(year_range)]
-    
-    no_weight = ("no-weight" in args) | (weights_file == "")
 
     for year_set in ProgressBar(years)
         slice_chop(data, weights, year_set, no_weight)
