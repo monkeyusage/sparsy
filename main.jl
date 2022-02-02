@@ -7,6 +7,7 @@ using FreqTables: freqtable
 using Tables: table
 using CUDA: CuArray, @cuda
 using Statistics: mean
+using Debugger: @bp
 
 function get_replacements(classes::Vector{T})::Dict{T, UInt64} where {T<:Number}
     # map unique elements to ints
@@ -154,7 +155,12 @@ function dataprep!(data::DataFrame, weights::DataFrame, no_weight::Bool=false)::
 end
 
 
-function slice_chop(data::DataFrame, weights::DataFrame, year_set::Set{UInt16}, no_weight::Bool = false)::Nothing
+function chop(
+    data::DataFrame,
+    weights::DataFrame,
+    year_set::Set{UInt16},
+    no_weight::Bool = false
+)::Union{Nothing, Tuple{Array{Float32, 2}, Array{Float32}, Array{Int64}, UInt16}}
     sub_df = filter(:year => in(year_set), data)
     year = max(year_set...)
 
@@ -171,21 +177,13 @@ function slice_chop(data::DataFrame, weights::DataFrame, year_set::Set{UInt16}, 
 
     sf = size(freq)[1]
     sw = size(weight)[1]
+    
+    if sf != sw
+        @bp
+    end
     @assert(sf == sw, "matrices shapes do not match $sf & $sw")
-    
-    @time std, cov_std, mal, cov_mal = compute_metrics(freq, weight)
-    
-    csvwrite("data/tmp/$(year)_tmp.csv",
-        DataFrame(
-            "std" => std,
-            "cov_std" => cov_std,
-            "mal" => mal,
-            "cov_mal" => cov_mal,
-            "firm" => firms,
-            "year" => year
-        )
-    )
-    return nothing
+
+    return freq, weight, firms, year
 end
 
 function main(args)
@@ -194,6 +192,8 @@ function main(args)
     weights_file = config["weight_data"]
     output_file = config["output_data"]
     iter_size = config["year_iteration"]
+
+    @assert(endswith(output_file, ".csv"), "output file should be a csv")
 
     data = DataFrame(dtaload(input_file))
 
@@ -205,15 +205,47 @@ function main(args)
     csvwrite("data/tmp/intermediate.csv", data)
 
     year_range = [UInt16(year) for year in min(data[!, "year"]...):max(data[!, "year"]...)]
-    years = [Set(year_range[i:i+iter_size-1]) for i in eachindex(year_range) if i + iter_size < length(year_range)]
 
-    for year_set in ProgressBar(years)
-        slice_chop(data, weights, year_set, no_weight)
+    # create vector of sets of years
+    years::Vector{Set{UInt16}} = []
+    if iter_size > 0
+        for i in eachindex(year_range)
+            if i + iter_size < length(year_range)
+                push!(years, Set(year_range[i:i+iter_size-1]))
+            else
+                push!(years, Set(year_range[i:end]))
+            end
+        end
+    else push!(years, Set(year_range))
     end
 
-    # merge all output files together
+    # compute metrics for each set of years
+    for year_set in ProgressBar(years)
+        out = chop(data, weights, year_set, no_weight)
+        if isnothing(out) continue end
+        freq, weight, firms, year = out
+        @time std, cov_std, mal, cov_mal = compute_metrics(freq, weight)
+        csvwrite("data/tmp/$(year)_tmp.csv",
+            DataFrame(
+                "std" => std,
+                "cov_std" => cov_std,
+                "mal" => mal,
+                "cov_mal" => cov_mal,
+                "firm" => firms,
+                "year" => year
+            )
+        )
+    end
+
+    # merge all output files together, delete tmp files
     files = [csvread("data/tmp/$file", DataFrame) for file in readdir("data/tmp/") if endswith(file, "_tmp.csv")]
     csvwrite(output_file, vcat(files...))
+
+    for file in readdir("data/tmp")
+        if endswith(file, "_tmp.csv")
+            rm("data/tmp/$file")
+        end
+    end
 end
 
-main(ARGS)
+# main(ARGS)
