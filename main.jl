@@ -178,9 +178,6 @@ function chop(
     sf = size(freq)[1]
     sw = size(weight)[1]
     
-    if sf != sw
-        @bp
-    end
     @assert(sf == sw, "matrices shapes do not match $sf & $sw")
 
     return freq, weight, firms, year
@@ -210,7 +207,7 @@ function main(args)
     years::Vector{Set{UInt16}} = []
     if iter_size > 0
         for i in eachindex(year_range)
-            if i + iter_size < length(year_range)
+            if i + iter_size - 1 < length(year_range)
                 push!(years, Set(year_range[i:i+iter_size-1]))
             else
                 push!(years, Set(year_range[i:end]))
@@ -220,9 +217,10 @@ function main(args)
     end
 
     # compute metrics for each set of years
+    println("here we go computing stuff")
     for year_set in ProgressBar(years)
         out = chop(data, weights, year_set, no_weight)
-        if isnothing(out) continue end
+        if isnothing(out); continue; end
         freq, weight, firms, year = out
         @time std, cov_std, mal, cov_mal = compute_metrics(freq, weight)
         csvwrite("data/tmp/$(year)_tmp.csv",
@@ -248,4 +246,4 @@ function main(args)
     end
 end
 
-# main(ARGS)
+main(ARGS)
