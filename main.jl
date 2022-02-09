@@ -53,23 +53,36 @@ function dot_zero(matrix::Array{Float32, 2}, weights::Array{Float32, 1})::Array{
     return out
 end
 
-function dot_zero_gpu_kernel!(mat::CuArray{Float32, 2}, out::CuArray{Float32, 1})::Nothing
-    X, Y = Xp, _ = size(mat)
+function dot_zero_gpu_kernel!(
+    mat::CuDeviceMatrix{Float32},
+    out::CuDeviceVector{Float32}
+)::Nothing
 
-    row = (blockIdx().x - 1) * blockDim().x + threadIdx().x
-    col = (blockIdx().y - 1) * blockDim().y +threadIdx().y
+    #=
+    here we use
+        one block per matrix row
+        one thread per matrix column
+    
+    we add the result of mat[i,z] * mat[j,z] and store it out
+    =#
 
-    if (row < X) && (col < Y)
-        @inbounds for x in 0:(X-1)
-            total = zero(Float32)
-            @inbounds for xp in 0:(Xp-1)
-                if xp == x continue end
-                @inbounds @simd for y in 0:(Y-1)
-                    total += mat[x, y] * mat[xp, y]
-                    # total += mat[(row*X) + y] * mat[(xp + y]
-                end
-            end
-            @inbounds out[x] = total
+    block_id = blockIdx().x
+    block_dim = blockDim().x
+    i = block_dim * block_id
+    z = threadIdx().x 
+
+    index = i + z
+
+    if (index) < length(mat)
+        for j in 1:length(mat):block_dim
+            if i == j continue end
+            CUDA.@cuprintln(
+                "index: ", index,
+                ", block id: ", block_id,
+                ", i:", i,
+                ", z:", z
+            )
+            out[block_id] += mat[index] * mat[j+z] #* mat[j, z]
         end
     end
     return nothing
@@ -77,10 +90,10 @@ end
 
 function dot_zero(matrix::CuArray{Float32, 2})::CuArray{Float32, 1}
     blocks, threads = size(matrix)
-    out = CUDA.zeros(Float32, blocks)
+    shared = @cuStaticSharedMem(Float32, blocks)
 
-    @cuda threads=threads blocks=blocks dot_zero_gpu_kernel!(matrix, out)
-    return out
+    @cuda threads=threads blocks=blocks dot_zero_gpu_kernel!(matrix, shared)
+    return shared
 end
 
 function mahalanobis(biggie::Array{Float32, 2}, small::Array{Float32, 2}, weights::Array{Float32, 1})::Array{Float32}
