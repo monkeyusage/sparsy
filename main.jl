@@ -37,15 +37,16 @@ function dot_zero(matrix::Array{Float32, 2}, weights::Array{Float32, 1})::Array{
     out[diagind(out)] .= 0
     out = sum(out, dims=2)
     """
-    X, Y = Xp, _ = size(matrix)
+    N, M = Np, _ = size(matrix)
 
-    out = Array{Float32, 1}(undef, X)
+    out = Array{Float32, 1}(undef, N)
 
-    Threads.@threads for x in 1:X
+    Threads.@threads for x in 1:N # 10
         total = zero(Float32)
-        @inbounds for xp in 1:Xp
-            @inbounds @simd for y in 1:Y
-                total = (xp == x) ? total : (total + (matrix[x, y] * matrix[xp, y]) * weights[x])
+        @inbounds for xp in 1:Np # 10
+            if (x == xp) continue end
+            @inbounds for y in 1:M # 4
+                total += matrix[x, y] * matrix[xp, y] * weights[x]
             end
         end
         @inbounds out[x] = total
@@ -55,45 +56,35 @@ end
 
 function dot_zero_gpu_kernel!(
     mat::CuDeviceMatrix{Float32},
+    weight::CuDeviceVector{Float32},
     out::CuDeviceVector{Float32}
 )::Nothing
 
-    #=
-    here we use
-        one block per matrix row
-        one thread per matrix column
-    
-    we add the result of mat[i,z] * mat[j,z] and store it out
-    =#
+    len = length(mat)
+    N, M = size(mat)
+    index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
 
-    block_id = blockIdx().x
-    block_dim = blockDim().x
-    i = block_dim * block_id
-    z = threadIdx().x 
-
-    index = i + z
-
-    if (index) < length(mat)
-        for j in 1:length(mat):block_dim
-            if i == j continue end
-            CUDA.@cuprintln(
-                "index: ", index,
-                ", block id: ", block_id,
-                ", i:", i,
-                ", z:", z
-            )
-            out[block_id] += mat[index] * mat[j+z] #* mat[j, z]
+    if (index) < len
+        for i in 1:N
+            for j in 1:M
+                if index == i continue end
+                out[index] += mat[index, j] * mat[i, j] * weight[index]
+            end
         end
     end
     return nothing
 end
 
-function dot_zero(matrix::CuArray{Float32, 2})::CuArray{Float32, 1}
-    blocks, threads = size(matrix)
-    shared = @cuStaticSharedMem(Float32, blocks)
+function dot_zero(matrix::CuDeviceMatrix{Float32}, weight::CuDeviceVector{Float32})::Array{Float32, 1}
+    N = size(matrix)[1]
+    threads_per_block = 256
+    blocks = ceil(N / threads_per_block)
 
-    @cuda threads=threads blocks=blocks dot_zero_gpu_kernel!(matrix, shared)
-    return shared
+    # blocks, threads = size(matrix)
+    out = CUDA.zeros(Float32, blocks)
+
+    @cuda threads=threads_per_block blocks=blocks dot_zero_gpu_kernel!(matrix, weight, out)
+    return Array(out)
 end
 
 function mahalanobis(biggie::Array{Float32, 2}, small::Array{Float32, 2}, weights::Array{Float32, 1})::Array{Float32}
