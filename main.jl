@@ -5,9 +5,8 @@ using DataFrames: DataFrame, replace!, rename!, sort!, groupby, combine
 using ProgressBars: ProgressBar
 using FreqTables: freqtable
 using Tables: table
-using CUDA: CuArray, @cuda
 using Statistics: mean
-using Debugger: @bp
+using CUDA
 
 function get_replacements(classes::Vector{T})::Dict{T, UInt64} where {T<:Number}
     # map unique elements to ints
@@ -55,35 +54,39 @@ function dot_zero(matrix::Array{Float32, 2}, weights::Array{Float32, 1})::Array{
 end
 
 function dot_zero_gpu_kernel!(
-    mat::CuDeviceMatrix{Float32},
-    weight::CuDeviceVector{Float32},
-    out::CuDeviceVector{Float32}
+    matrix::CuDeviceMatrix{Float32},
+    weights::CuDeviceVector{Float32},
+    out::CuDeviceVector{Float32},
+    len::Int,
+    N::Int,
+    M::Int
 )::Nothing
-
-    len = length(mat)
-    N, M = size(mat)
     index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
 
     if (index) < len
         for i in 1:N
             for j in 1:M
                 if index == i continue end
-                out[index] += mat[index, j] * mat[i, j] * weight[index]
+                out[index] += matrix[index, j] * matrix[i, j] * weights[index]
             end
         end
     end
     return nothing
 end
 
-function dot_zero(matrix::CuDeviceMatrix{Float32}, weight::CuDeviceVector{Float32})::Array{Float32, 1}
-    N = size(matrix)[1]
+function dot_zero(
+    matrix::CuArray{Float32, 2, CUDA.Mem.DeviceBuffer},
+    weights::CuArray{Float32, 1, CUDA.Mem.DeviceBuffer}
+)::Array{Float32}
+
+    len = length(matrix)
+    N, M = size(matrix)
     threads_per_block = 256
-    blocks = ceil(N / threads_per_block)
+    blocks = Int(ceil(N / threads_per_block))
 
-    # blocks, threads = size(matrix)
-    out = CUDA.zeros(Float32, blocks)
+    out = CUDA.zeros(Float32, N)
 
-    @cuda threads=threads_per_block blocks=blocks dot_zero_gpu_kernel!(matrix, weight, out)
+    @cuda threads=threads_per_block blocks=blocks dot_zero_gpu_kernel!(matrix, weights, out, len, N, M)
     return Array(out)
 end
 
@@ -113,7 +116,7 @@ function mahalanobis(biggie::Array{Float32, 2}, small::Array{Float32, 2}, weight
     return out
 end
 
-function compute_metrics(matrix::AbstractArray{Float32, 2}, weight::Array{Float32})::NTuple{4, Array{Float32}}
+function compute_metrics(matrix::AbstractArray{Float32, 2}, weight::AbstractArray{Float32})::NTuple{4, Array{Float32}}
     α = (matrix ./ sum(matrix, dims=2))
     # scale down precision to 32 bits
     α = convert(Matrix{Float32}, α)
@@ -163,21 +166,21 @@ function chop(
     data::DataFrame,
     weights::DataFrame,
     year_set::Set{UInt16},
-    no_weight::Bool = false
-)::Union{Nothing, Tuple{Array{Float32, 2}, Array{Float32}, Array{Int64}, UInt16}}
+    use_weight::Bool = true,
+    use_gpu::Bool = true
+)::Union{Nothing, Tuple{AbstractArray{Float32, 2}, AbstractArray{Float32}, Array{Int64}, UInt16}}
     sub_df = filter(:year => in(year_set), data)
     year = max(year_set...)
 
+    if isempty(sub_df) return nothing end
+
     freq = freqtable(sub_df, :firm, :tclass)
     firms, _ = names(freq)
-    freq = convert(Array{Float32}, freq)
 
-    sub_weights = !no_weight ? filter(:year => ==(year), weights) : DataFrame(:weight => ones(Float32, size(freq)[1]))
+    freq = use_gpu ? convert(CuArray{Float32}, freq) : convert(Array{Float32}, freq)
 
-    if isempty(sub_df) | isempty(sub_weights)
-        return nothing
-    end
-    weight = sub_weights[!, "weight"]
+    weight = use_weight ? filter(:year => ==(year), weights)[!, "weight"] : ones(Float32, size(freq)[1])
+    weight = use_gpu ? convert(CuArray{Float32}, weight) : weight
 
     sf = size(freq)[1]
     sw = size(weight)[1]
@@ -198,7 +201,7 @@ function main(args)
 
     data = DataFrame(dtaload(input_file))
 
-    no_weight = ("no-weight" in args) | (weights_file == "")
+    use_weight =  (weights_file == "") & !("no-weight" in args)
 
     weights = !no_weight ? DataFrame(dtaload(weights_file)) : DataFrame(:weight => ones(Float32, size(data)[1]))
     data, weights = dataprep!(data, weights, no_weight)
@@ -221,9 +224,16 @@ function main(args)
     end
 
     # compute metrics for each set of years
-    println("here we go computing stuff")
+    println("Starting computation using $(length(years)) batches")
+    if CUDA.functional()
+        println("CUDA is available, you should get a significant speed up conpared to the CPU version")
+        println("If you still want to disable GPU usage use the no-gpu command line argument when launching the script")
+    end
+
+    use_gpu = CUDA.functional() & !("no-gpu" in args)
+
     for year_set in ProgressBar(years)
-        out = chop(data, weights, year_set, no_weight)
+        out = chop(data, weights, year_set, use_weight, use_gpu)
         if isnothing(out); continue; end
         freq, weight, firms, year = out
         @time std, cov_std, mal, cov_mal = compute_metrics(freq, weight)
