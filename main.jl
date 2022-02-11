@@ -263,11 +263,12 @@ function main(args)
     # compute metrics for each set of years
     println("Starting computation using $(length(years)) batches")
     if CUDA.functional()
-        println("CUDA is available, you should get a significant speed up conpared to the CPU version")
+        println("CUDA is available, you should get a significant speed up compared to the CPU version")
         println("If you still want to disable GPU usage use the no-gpu command line argument when launching the script")
     end
 
     use_gpu = CUDA.functional() & !("no-gpu" in args)
+    if !use_gpu println("GPU available but ignored, computation might take a while") end
 
     for year_set in ProgressBar(years)
         out = chop(data, weights, year_set, use_weight, use_gpu)
