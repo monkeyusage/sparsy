@@ -44,7 +44,7 @@ function dot_zero(matrix::Array{Float32, 2}, weights::Array{Float32, 1})::Array{
         total = zero(Float32)
         @inbounds for ii in 1:N
             if (i == ii) continue end
-            @inbounds for j in 1:M
+            @inbounds @simd for j in 1:M
                 total += matrix[i, j] * matrix[ii, j] * weights[i]
             end
         end
@@ -106,7 +106,7 @@ function mahalanobis(biggie::Array{Float32, 2}, small::Array{Float32, 2}, weight
         @inbounds for ii in 1:N
             if ii == i continue end
             @inbounds @simd for j in 1:M
-                total += (biggie[i, j] * small[j, ii]) * weights[i]
+                total += biggie[i, j] * small[j, ii] * weights[i]
             end
         end
         @inbounds out[i] = total
@@ -127,9 +127,9 @@ function mahalanobis_gpu_kernel!(
 
     if (index) < len
         for i in 1:N
+            if index == i continue end
             for j in 1:M
-                if index == i continue end
-                out[index] += biggie[index, j] * small[j, i] * weights[index]
+                @inbounds out[index] += biggie[index, j] * small[j, i] * weights[index]
             end
         end
     end
