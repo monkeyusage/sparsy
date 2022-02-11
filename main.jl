@@ -36,16 +36,16 @@ function dot_zero(matrix::Array{Float32, 2}, weights::Array{Float32, 1})::Array{
     out[diagind(out)] .= 0
     out = sum(out, dims=2)
     """
-    N, M = Np, _ = size(matrix)
+    N, M = size(matrix)
 
     out = Array{Float32, 1}(undef, N)
 
-    Threads.@threads for x in 1:N # 10
+    Threads.@threads for i in 1:N
         total = zero(Float32)
-        @inbounds for xp in 1:Np # 10
-            if (x == xp) continue end
-            @inbounds for y in 1:M # 4
-                total += matrix[x, y] * matrix[xp, y] * weights[x]
+        @inbounds for ii in 1:N
+            if (i == ii) continue end
+            @inbounds for j in 1:M
+                total += matrix[i, j] * matrix[ii, j] * weights[i]
             end
         end
         @inbounds out[x] = total
@@ -65,9 +65,9 @@ function dot_zero_gpu_kernel!(
 
     if (index) < len
         for i in 1:N
+            if index == i continue end
             for j in 1:M
-                if index == i continue end
-                out[index] += matrix[index, j] * matrix[i, j] * weights[index]
+                @inbounds out[index] += matrix[index, j] * matrix[i, j] * weights[index]
             end
         end
     end
@@ -97,23 +97,60 @@ function mahalanobis(biggie::Array{Float32, 2}, small::Array{Float32, 2}, weight
     out[diagind(out)] .= 0
     out = sum(out, dims=2)
     """
-    K = size(biggie)[1]
-    J = size(biggie)[2]
-    I = size(small)[2]
+    N, M = size(biggie)
 
-    out = Array{Float32}(undef, K)
+    out = Array{Float32}(undef, N)
 
-    Threads.@threads for k in 1:K
+    Threads.@threads for i in 1:N
         total = Float32(0)
-        @inbounds for i in 1:I
-            if i == k continue end
-            @inbounds @simd for j in 1:J
-                total += (biggie[k, j] * small[j, i]) * weights[k]
+        @inbounds for ii in 1:N
+            if ii == i continue end
+            @inbounds @simd for j in 1:M
+                total += (biggie[i, j] * small[j, ii]) * weights[i]
             end
         end
-        @inbounds out[k] = total
+        @inbounds out[i] = total
     end
     return out
+end
+
+function mahalanobis_gpu_kernel!(
+    biggie::CuDeviceMatrix{Float32},
+    small::CuDeviceMatrix{Float32},
+    weights::CuDeviceVector{Float32},
+    out::CuDeviceVector{Float32},
+    len::Int,
+    N::Int,
+    M::Int,
+)::Nothing
+    index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+
+    if (index) < len
+        for i in 1:N
+            for j in 1:M
+                if index == i continue end
+                out[index] += biggie[index, j] * small[j, i] * weights[index]
+            end
+        end
+    end
+    return nothing
+end
+
+function mahalanobis(
+    biggie::CuArray{Float32, 2, CUDA.Mem.DeviceBuffer},
+    small::CuArray{Float32, 2, CUDA.Mem.DeviceBuffer},
+    weights::CuArray{Float32, 1, CUDA.Mem.DeviceBuffer}
+)::Array{Float32}
+    len = length(biggie)
+    N, M = size(biggie)
+    threads_per_block = 256
+    blocks = Int(ceil(N / threads_per_block))
+
+    # blocks, threads = size(matrix)
+    out = CUDA.zeros(Float32, N)
+
+    @cuda threads=threads_per_block blocks=blocks mahalanobis_gpu_kernel!(biggie, small, weights, out, len, N, M)
+    return Array(out)
 end
 
 function compute_metrics(matrix::AbstractArray{Float32, 2}, weight::AbstractArray{Float32})::NTuple{4, Array{Float32}}
