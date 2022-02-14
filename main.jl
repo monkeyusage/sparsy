@@ -17,7 +17,7 @@ function get_replacements(classes::Vector{T})::Dict{T, UInt64} where {T<:Number}
     return replacements
 end
 
-function tclass_corr(matrix::Array{T, 2})::Array{T, 2} where {T<:Number}
+function tclass_corr(matrix::Array{Float32, 2})::Array{Float32, 2}
     var = matrix'matrix
     base_var = copy(var)
     s = size(var)[1]
@@ -27,6 +27,36 @@ function tclass_corr(matrix::Array{T, 2})::Array{T, 2} where {T<:Number}
         end
     end
     return var
+end
+
+function tclass_corr(matrix::CuArray{Float32})::CuArray{Float32}
+    var = matrix'matrix
+    out = copy(var)
+    
+    N, _ = size(var)
+    threads_per_block = 4
+    if N <= threads_per_block
+        threads_per_block = 1
+    end
+    blocks = Int(ceil(N / threads_per_block))
+
+    @cuda threads=threads_per_block blocks=blocks tclass_corr_gpu_kernel!(var, out, N)
+    return out
+end
+
+function tclass_corr_gpu_kernel!(matrix::CuDeviceMatrix{Float32}, out::CuDeviceMatrix{Float32}, N::Int)::Nothing
+    index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+
+    if index <= N
+        for i in 1:N
+            if (out[index,index] == 0) | (out[i,i] == 0)
+                out[index, i] = 1
+            else
+                out[index, i] =  out[index, i] / (sqrt(matrix[index,index]) * sqrt(matrix[i,i]))
+            end
+        end
+    end
+    return nothing
 end
 
 function dot_zero(matrix::Array{Float32, 2}, weights::Array{Float32, 1})::Array{Float32}
@@ -155,8 +185,6 @@ end
 
 function compute_metrics(matrix::AbstractArray{Float32, 2}, weight::AbstractArray{Float32})::NTuple{4, Array{Float32}}
     α = (matrix ./ sum(matrix, dims=2))
-    # scale down precision to 32 bits
-    α = convert(Matrix{Float32}, α)
     
     β = tclass_corr(α)
 
@@ -216,6 +244,8 @@ function chop(
 
     freq = use_gpu ? convert(CuArray{Float32}, freq) : convert(Array{Float32}, freq)
 
+    if length(freq) < 2 return nothing end
+
     weight = use_weight ? filter(:year => ==(year), weights)[!, "weight"] : ones(Float32, size(freq)[1])
     weight = use_gpu ? convert(CuArray{Float32}, weight) : weight
 
@@ -248,7 +278,7 @@ function main(args)
     year_range = [UInt16(year) for year in min(data[!, "year"]...):max(data[!, "year"]...)]
 
     # create vector of sets of years
-    years::Vector{Set{UInt16}} = []
+    years = []
     if iter_size > 0
         for i in eachindex(year_range)
             if i + iter_size - 1 < length(year_range)
