@@ -48,7 +48,7 @@ function dot_zero(matrix::Array{Float32, 2}, weights::Array{Float32, 1})::Array{
                 total += matrix[i, j] * matrix[ii, j] * weights[i]
             end
         end
-        @inbounds out[x] = total
+        @inbounds out[i] = total
     end
     return out
 end
@@ -172,7 +172,7 @@ function compute_metrics(matrix::AbstractArray{Float32, 2}, weight::AbstractArra
     return std, cov_std, ma, cov_ma
 end
 
-function dataprep!(data::DataFrame, weights::DataFrame, no_weight::Bool=false)::NTuple{2, DataFrame}
+function dataprep!(data::DataFrame, weights::DataFrame, use_weight::Bool=false)::NTuple{2, DataFrame}
     data = data[:, ["year", "firm", "nclass"]]
     data[!, "year"] = map(Int16, data[!, "year"])
     data[!, "nclass"] = map(UInt32, data[!, "nclass"])
@@ -188,7 +188,7 @@ function dataprep!(data::DataFrame, weights::DataFrame, no_weight::Bool=false)::
     rename!(data, "nclass" => "tclass") # rename nclass to tclass
     sort!(data, ["year", "firm"]) # sort by year and firmid
 
-    if !no_weight
+    if use_weight
         sort!(weights, ["year", "firmid"])
         weights[!, "year"] = map(Int16, weights[!, "year"])
         weights[!, "weight"] = map(Float32, weights[!, "weight"])
@@ -240,8 +240,8 @@ function main(args)
 
     use_weight =  (weights_file == "") & !("no-weight" in args)
 
-    weights = !no_weight ? DataFrame(dtaload(weights_file)) : DataFrame(:weight => ones(Float32, size(data)[1]))
-    data, weights = dataprep!(data, weights, no_weight)
+    weights = use_weight ? DataFrame(dtaload(weights_file)) : DataFrame(:weight => ones(Float32, size(data)[1]))
+    data, weights = dataprep!(data, weights, use_weight)
 
     csvwrite("data/tmp/intermediate.csv", data)
 
@@ -268,7 +268,9 @@ function main(args)
     end
 
     use_gpu = CUDA.functional() & !("no-gpu" in args)
-    if !use_gpu println("GPU available but ignored, computation might take a while") end
+    if !CUDA.functional(); println("GPU not available"); end
+    if (CUDA.functional() & !use_gpu); println("GPU available but ignored, computation might take a while"); end
+    if use_gpu; println("CUDA available, using GPU"); end
 
     for year_set in ProgressBar(years)
         out = chop(data, weights, year_set, use_weight, use_gpu)
