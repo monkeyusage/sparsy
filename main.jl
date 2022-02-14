@@ -238,7 +238,7 @@ function main(args)
 
     data = DataFrame(dtaload(input_file))
 
-    use_weight =  !(weights_file == "") & !("no-weight" in args)
+    use_weight =  (weights_file != "") & !("no-weight" in args)
 
     weights = use_weight ? DataFrame(dtaload(weights_file)) : DataFrame(:weight => ones(Float32, size(data)[1]))
     data, weights = dataprep!(data, weights, use_weight)
