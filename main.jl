@@ -45,7 +45,7 @@ function dot_zero(matrix::Array{Float32, 2}, weights::Array{Float32, 1})::Array{
         @inbounds for ii in 1:N
             if (i == ii) continue end
             @inbounds @simd for j in 1:M
-                total += matrix[i, j] * matrix[ii, j] * weights[i]
+                total += matrix[i, j] * matrix[ii, j] * weights[ii]
             end
         end
         @inbounds out[i] = total
@@ -67,7 +67,7 @@ function dot_zero_gpu_kernel!(
         for i in 1:N
             if index == i continue end
             for j in 1:M
-                @inbounds out[index] += matrix[index, j] * matrix[i, j] * weights[index]
+                @inbounds out[index] += matrix[index, j] * matrix[i, j] * weights[i]
             end
         end
     end
@@ -106,7 +106,7 @@ function mahalanobis(biggie::Array{Float32, 2}, small::Array{Float32, 2}, weight
         @inbounds for ii in 1:N
             if ii == i continue end
             @inbounds @simd for j in 1:M
-                total += biggie[i, j] * small[j, ii] * weights[i]
+                total += biggie[i, j] * small[j, ii] * weights[ii]
             end
         end
         @inbounds out[i] = total
@@ -129,7 +129,7 @@ function mahalanobis_gpu_kernel!(
         for i in 1:N
             if index == i continue end
             for j in 1:M
-                @inbounds out[index] += biggie[index, j] * small[j, i] * weights[index]
+                @inbounds out[index] += biggie[index, j] * small[j, i] * weights[i]
             end
         end
     end
@@ -169,7 +169,7 @@ function compute_metrics(matrix::AbstractArray{Float32, 2}, weight::AbstractArra
     # # generate mahalanobis measure
     ma = mahalanobis(ω, β*ω', weight)
     cov_ma = mahalanobis(α, β*α', weight)
-    return std, cov_std, ma, cov_ma
+    return map((x) -> 100 * x, (std, cov_std, ma, cov_ma))
 end
 
 function dataprep!(data::DataFrame, weights::DataFrame, use_weight::Bool=false)::NTuple{2, DataFrame}
