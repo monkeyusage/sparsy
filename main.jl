@@ -276,7 +276,7 @@ function main(args)
         out = chop(data, weights, year_set, use_weight, use_gpu)
         if isnothing(out); continue; end
         freq, weight, firms, year = out
-        @time std, cov_std, mal, cov_mal = compute_metrics(freq, weight)
+        std, cov_std, mal, cov_mal = compute_metrics(freq, weight)
         csvwrite("data/tmp/$(year)_tmp.csv",
             DataFrame(
                 "std" => std,
