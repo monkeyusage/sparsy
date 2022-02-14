@@ -238,7 +238,7 @@ function main(args)
 
     data = DataFrame(dtaload(input_file))
 
-    use_weight =  !(weights_file == "") & !("-no-weight" in args)
+    use_weight =  !(weights_file == "") & !("no-weight" in args)
 
     weights = use_weight ? DataFrame(dtaload(weights_file)) : DataFrame(:weight => ones(Float32, size(data)[1]))
     data, weights = dataprep!(data, weights, use_weight)
@@ -267,7 +267,7 @@ function main(args)
         println("If you still want to disable GPU usage use the no-gpu command line argument when launching the script")
     end
 
-    use_gpu = CUDA.functional() & !("-no-gpu" in args)
+    use_gpu = CUDA.functional() & !("no-gpu" in args)
     if !CUDA.functional(); println("GPU not available"); end
     if (CUDA.functional() & !use_gpu); println("GPU available but ignored, computation might take a while"); end
     if use_gpu; println("CUDA available, using GPU"); end
