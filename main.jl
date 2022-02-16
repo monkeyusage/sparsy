@@ -8,6 +8,9 @@ using Tables: table
 using Statistics: mean
 using CUDA
 
+include("gpu.jl")
+include("cpu.jl")
+
 function get_replacements(classes::Vector{T})::Dict{T, UInt64} where {T<:Number}
     # map unique elements to ints
     replacements = Dict{T, UInt64}()
@@ -17,177 +20,14 @@ function get_replacements(classes::Vector{T})::Dict{T, UInt64} where {T<:Number}
     return replacements
 end
 
-function tclass_corr(matrix::Array{Float32, 2})::Array{Float32, 2}
-    var = matrix'matrix
-    base_var = copy(var)
-    s = size(var)[1]
-    @inbounds @simd for i in 1:s
-        @inbounds @simd for j in 1:s 
-            var[i, j] = var[i,i] == 0 || var[j,j] == 0 ? 1 : var[i, j] / (sqrt(base_var[i,i]) * sqrt(base_var[j,j]))
-        end
-    end
-    return var
-end
-
-function tclass_corr(matrix::CuArray{Float32})::CuArray{Float32}
-    var = matrix'matrix
-    out = copy(var)
-    
-    N, _ = size(var)
-    threads_per_block = 4
-    if N <= threads_per_block
-        threads_per_block = 1
-    end
-    blocks = Int(ceil(N / threads_per_block))
-
-    @cuda threads=threads_per_block blocks=blocks tclass_corr_gpu_kernel!(var, out, N)
-    return out
-end
-
-function tclass_corr_gpu_kernel!(matrix::CuDeviceMatrix{Float32}, out::CuDeviceMatrix{Float32}, N::Int)::Nothing
-    index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
-
-    if index <= N
-        for i in 1:N
-            if (out[index,index] == 0) | (out[i,i] == 0)
-                out[index, i] = 1
-            else
-                out[index, i] =  out[index, i] / (sqrt(matrix[index,index]) * sqrt(matrix[i,i]))
-            end
-        end
-    end
-    return nothing
-end
-
-function dot_zero(matrix::Array{Float32, 2}, weights::Array{Float32, 1})::Array{Float32}
-    """
-    # vectorized version of the following operations with M (n, m) => NM (n, n) => n
-    out = matrix * matrix' => creates a matrix we cannot store in RAM
-    out[diagind(out)] .= 0
-    out = sum(out, dims=2)
-    """
-    N, M = size(matrix)
-
-    out = Array{Float32, 1}(undef, N)
-
-    Threads.@threads for i in 1:N
-        total = zero(Float32)
-        @inbounds for ii in 1:N
-            if (i == ii) continue end
-            @inbounds @simd for j in 1:M
-                total += matrix[i, j] * matrix[ii, j] * weights[ii]
-            end
-        end
-        @inbounds out[i] = total
-    end
-    return out
-end
-
-function dot_zero_gpu_kernel!(
-    matrix::CuDeviceMatrix{Float32},
-    weights::CuDeviceVector{Float32},
-    out::CuDeviceVector{Float32},
-    len::Int,
-    N::Int,
-    M::Int
-)::Nothing
-    index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
-
-    if (index) < len
-        for i in 1:N
-            if index == i continue end
-            for j in 1:M
-                @inbounds out[index] += matrix[index, j] * matrix[i, j] * weights[i]
-            end
-        end
-    end
-    return nothing
-end
-
-function dot_zero(
-    matrix::CuArray{Float32, 2, CUDA.Mem.DeviceBuffer},
-    weights::CuArray{Float32, 1, CUDA.Mem.DeviceBuffer}
-)::Array{Float32}
-
-    len = length(matrix)
-    N, M = size(matrix)
-    threads_per_block = 256
-    blocks = Int(ceil(N / threads_per_block))
-
-    out = CUDA.zeros(Float32, N)
-
-    @cuda threads=threads_per_block blocks=blocks dot_zero_gpu_kernel!(matrix, weights, out, len, N, M)
-    return Array(out)
-end
-
-function mahalanobis(biggie::Array{Float32, 2}, small::Array{Float32, 2}, weights::Array{Float32, 1})::Array{Float32}
-    """
-    # vectorized version of the following operations
-    out = biggie * (small * biggie')
-    out[diagind(out)] .= 0
-    out = sum(out, dims=2)
-    """
-    N, M = size(biggie)
-
-    out = Array{Float32}(undef, N)
-
-    Threads.@threads for i in 1:N
-        total = Float32(0)
-        @inbounds for ii in 1:N
-            if ii == i continue end
-            @inbounds @simd for j in 1:M
-                total += biggie[i, j] * small[j, ii] * weights[ii]
-            end
-        end
-        @inbounds out[i] = total
-    end
-    return out
-end
-
-function mahalanobis_gpu_kernel!(
-    biggie::CuDeviceMatrix{Float32},
-    small::CuDeviceMatrix{Float32},
-    weights::CuDeviceVector{Float32},
-    out::CuDeviceVector{Float32},
-    len::Int,
-    N::Int,
-    M::Int,
-)::Nothing
-    index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
-
-    if (index) < len
-        for i in 1:N
-            if index == i continue end
-            for j in 1:M
-                @inbounds out[index] += biggie[index, j] * small[j, i] * weights[i]
-            end
-        end
-    end
-    return nothing
-end
-
-function mahalanobis(
-    biggie::CuArray{Float32, 2, CUDA.Mem.DeviceBuffer},
-    small::CuArray{Float32, 2, CUDA.Mem.DeviceBuffer},
-    weights::CuArray{Float32, 1, CUDA.Mem.DeviceBuffer}
-)::Array{Float32}
-    len = length(biggie)
-    N, M = size(biggie)
-    threads_per_block = 256
-    blocks = Int(ceil(N / threads_per_block))
-
-    # blocks, threads = size(matrix)
-    out = CUDA.zeros(Float32, N)
-
-    @cuda threads=threads_per_block blocks=blocks mahalanobis_gpu_kernel!(biggie, small, weights, out, len, N, M)
-    return Array(out)
-end
-
 function compute_metrics(matrix::AbstractArray{Float32, 2}, weight::AbstractArray{Float32})::NTuple{4, Array{Float32}}
     α = (matrix ./ sum(matrix, dims=2))
     
+    # compute matrix of correlations between classes (m x m)
     β = tclass_corr(α)
 
+    # normalize the values inside matrix
+    # sum(α .* α, dims=2) == (α*α')[diagind(α)]
     ω = α ./ sqrt.(sum(α .* α, dims=2))
 
     # generate std measures
@@ -227,7 +67,7 @@ function dataprep!(data::DataFrame, weights::DataFrame, use_weight::Bool=true)::
 end
 
 
-function chop(
+function slice(
     data::DataFrame,
     weights::DataFrame,
     year_set::Set{UInt16},
@@ -303,7 +143,7 @@ function main(args)
     if use_gpu; println("CUDA available, using GPU"); end
 
     for year_set in ProgressBar(years)
-        out = chop(data, weights, year_set, use_weight, use_gpu)
+        out = slice(data, weights, year_set, use_weight, use_gpu)
         if isnothing(out); continue; end
         freq, weight, firms, year = out
         std, cov_std, mal, cov_mal = compute_metrics(freq, weight)
