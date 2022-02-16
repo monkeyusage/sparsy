@@ -24,8 +24,8 @@ function main()::Nothing
         config = Dict(
             "input_data" => "data/data.dta",
             "weight_data" => "data/weight.dta",
-            "output_data"=> "data/output.dta",
-            "year_iteration" => 3
+            "output_data"=> "data/output.csv",
+            "year_iteration" => 1
         )
         write(f, json(config, 4))
     end
