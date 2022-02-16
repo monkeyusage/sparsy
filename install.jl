@@ -8,7 +8,8 @@ libraries = [
     "BenchmarkTools",
     "ProgressBars",
     "FreqTables",
-    "Debugger"
+    "Debugger",
+    "CUDA",
 ]
 
 for pkg in libraries
