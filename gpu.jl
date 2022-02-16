@@ -5,10 +5,7 @@ function tclass_corr(matrix::CuArray{Float32})::CuArray{Float32}
     out = copy(var)
     
     N, _ = size(var)
-    threads_per_block = 4
-    if N <= threads_per_block
-        threads_per_block = 1
-    end
+    threads_per_block = if N > 128 ? 128 : 1
     blocks = Int(ceil(N / threads_per_block))
 
     @cuda threads=threads_per_block blocks=blocks tclass_corr_gpu_kernel!(var, out, N)
