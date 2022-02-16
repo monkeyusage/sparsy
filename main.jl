@@ -20,26 +20,6 @@ function get_replacements(classes::Vector{T})::Dict{T, UInt64} where {T<:Number}
     return replacements
 end
 
-function compute_metrics(matrix::AbstractArray{Float32, 2}, weight::AbstractArray{Float32})::NTuple{4, Array{Float32}}
-    α = (matrix ./ sum(matrix, dims=2))
-    
-    # compute matrix of correlations between classes (m x m)
-    β = tclass_corr(α)
-
-    # normalize the values inside matrix
-    # sum(α .* α, dims=2) == (α*α')[diagind(α)]
-    ω = α ./ sqrt.(sum(α .* α, dims=2))
-
-    # generate std measures
-    std = dot_zero(ω, weight)
-    cov_std = dot_zero(α, weight)
-
-    # # generate mahalanobis measure
-    ma = mahalanobis(ω, β*ω', weight)
-    cov_ma = mahalanobis(α, β*α', weight)
-    return map((x) -> 100 * x, (std, cov_std, ma, cov_ma))
-end
-
 function dataprep!(data::DataFrame, weights::DataFrame, use_weight::Bool=true)::NTuple{2, DataFrame}
     data = data[:, ["year", "firm", "nclass"]]
     data[!, "year"] = map(Int16, data[!, "year"])
@@ -95,6 +75,26 @@ function slice(
     @assert(sf == sw, "matrices shapes do not match $sf & $sw")
 
     return freq, weight, firms, year
+end
+
+function compute_metrics(matrix::AbstractArray{Float32, 2}, weight::AbstractArray{Float32})::NTuple{4, Array{Float32}}
+    α = (matrix ./ sum(matrix, dims=2))
+    
+    # compute matrix of correlations between classes (m x m)
+    β = tclass_corr(α)
+
+    # normalize the values inside matrix
+    # sum(α .* α, dims=2) == (α*α')[diagind(α)]
+    ω = α ./ sqrt.(sum(α .* α, dims=2))
+
+    # generate std measures
+    std = dot_zero(ω, weight)
+    cov_std = dot_zero(α, weight)
+
+    # # generate mahalanobis measure
+    ma = mahalanobis(ω, β*ω', weight)
+    cov_ma = mahalanobis(α, β*α', weight)
+    return map((x) -> 100 * x, (std, cov_std, ma, cov_ma))
 end
 
 function main(args)
