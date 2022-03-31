@@ -37,10 +37,10 @@ function dataprep!(data::DataFrame, weights::DataFrame, use_weight::Bool=true)::
     sort!(data, ["year", "firm"]) # sort by year and firmid
 
     if use_weight
-        sort!(weights, ["year", "firmid"])
         weights[!, "year"] = map(Int16, weights[!, "year"])
         weights[!, "weight"] = map(Float32, weights[!, "weight"])
         weights[!, "firmid"] = parse.(Int, weights[!, "firmid"])
+        sort!(weights, ["year", "firmid"])
     end
 
     return data, weights
@@ -66,7 +66,7 @@ function slice(
 
     if length(freq) < 2 return nothing end
 
-    weight = use_weight ? filter(:year => ==(year), weights)[!, "weight"] : ones(Float32, size(freq)[1])
+    weight = use_weight ? filter(row -> row.year==year, weights)[!, "weight"] : ones(Float32, size(freq)[1])
     weight = use_gpu ? convert(CuArray{Float32}, weight) : weight
 
     sf = size(freq)[1]
