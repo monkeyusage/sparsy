@@ -123,8 +123,6 @@ function main(args)
         for i in eachindex(year_range)
             if i + iter_size - 1 < length(year_range)
                 push!(years, Set(year_range[i:i+iter_size-1]))
-            else
-                push!(years, Set(year_range[i:end]))
             end
         end
     else push!(years, Set(year_range))
