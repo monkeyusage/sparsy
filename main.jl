@@ -121,7 +121,7 @@ function main(args)
     years = []
     if iter_size > 0
         for i in eachindex(year_range)
-            if i + iter_size - 1 < length(year_range)
+            if i + iter_size - 1 <= length(year_range)
                 push!(years, Set(year_range[i:i+iter_size-1]))
             end
         end
