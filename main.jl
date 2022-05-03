@@ -11,6 +11,11 @@ using CUDA
 include("src/gpu.jl")
 include("src/cpu.jl")
 
+function log_big_matrix(dict::LogDict, year::UInt16)::Nothing
+    DataFrame
+end
+
+
 function get_replacements(classes::Vector{T})::Dict{T, UInt64} where {T<:Number}
     # map unique elements to ints
     replacements = Dict{T, UInt64}()
@@ -85,6 +90,7 @@ function compute_metrics(
 )::NTuple{4, Array{Float32}}
 
     logger_dict = use_logger ? Dict{NTuple{2, Int}, Vector{Float32}} : nothing
+    # TODO: use append on each call
     α = (matrix ./ sum(matrix, dims=2))
     # compute matrix of correlations between classes (m x m)
     β = tclass_corr(α)
@@ -95,14 +101,14 @@ function compute_metrics(
 
     # generate std measures
     std, logger_dict = dot_zero(ω, weight, logger_dict)
-    cov_std, logger_dict = dot_zero(α, weight, use_logger)
+    cov_std, logger_dict = dot_zero(α, weight, logger_dict)
 
     # # generate mahalanobis measure
-    ma, logger_dict = mahalanobis(ω, β*ω', weight, use_logger)
-    cov_ma, logger_dict = mahalanobis(α, β*α', weight, use_logger)
+    ma, logger_dict = mahalanobis(ω, β*ω', weight, logger_dict)
+    cov_ma, logger_dict = mahalanobis(α, β*α', weight, logger_dict)
 
     if use_logger
-        log_big_matrix(logger_dict)
+        log_big_matrix(logger_dict, year)
     end
 
     return map((x) -> 100 * x, (std, cov_std, ma, cov_ma))
@@ -153,7 +159,8 @@ function main(args)
     if use_gpu; println("CUDA available, using GPU"); end
 
     if use_gpu & use_logger
-        println("Cannot use logger with GPU, switching to CPU version")
+        println("Cannot use logger with GPU, switching off logger or remove GPU usage")
+        return
     end
 
     for year_set in ProgressBar(years)

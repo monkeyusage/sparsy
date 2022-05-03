@@ -1,3 +1,15 @@
+LogDict = Union{Dict{NTuple{2, Integer}, Vector{AbstractFloat}}, Nothing}
+function log_value!(dict::LogDict, value::AbstractFloat)::Nothing
+    if !isnothing(dict)
+        if haskey(dict, (i, ii))
+            push!(dict[(i, ii)], value)
+        else
+            dict[(i, ii)] = [value]
+        end
+    end
+end
+
+
 function tclass_corr(matrix::Array{Float32, 2})::Array{Float32, 2}
     """
     # correlation over N * M matrix that return M * M correlation matrix
@@ -18,8 +30,8 @@ end
 function dot_zero(
     matrix::Array{Float32, 2},
     weights::Array{Float32, 1},
-    logger_dict::Dict{NTuple{2, Integer}, AbstractFloat}
-)::Tuple{Array{Float32}, Dict{NTuple{2, Integer}, AbstractFloat}}
+    logger_dict::LogDict
+)::Tuple{Array{Float32}, LogDict}
     """
     # vectorized version of the following operations with M (n, m) => NM (n, n) => n
     out = matrix * matrix' => creates a matrix we cannot store in RAM
@@ -37,22 +49,22 @@ function dot_zero(
             @inbounds for j in 1:M
                 # logging firm pair and the value associated to it
                 value = matrix[i, j] * matrix[ii, j]
-                logger_dict[(i, ii)] = value
+                log_value!(logger_dict, value)
                 total += value * weights[ii]
             end
         end
         @inbounds out[i] = total
     end
 
-    return out
+    return out, logger_dict
 end
 
 function mahalanobis(
     biggie::Array{Float32, 2},
     small::Array{Float32, 2},
     weights::Array{Float32, 1},
-    logger_dict::Dict{NTuple{2, Integer}, AbstractFloat}
-)::Tuple{Array{Float32}, Dict{NTuple{2, Integer}, AbstractFloat}}
+    logger_dict::LogDict
+)::Tuple{Array{Float32}, LogDict}
     """
     # vectorized version of the following operations
     out = biggie * (small * biggie')
@@ -70,11 +82,11 @@ function mahalanobis(
             @inbounds for j in 1:M
                 # logging firm pair and the value associated to it
                 value = biggie[i, j] * small[j, ii]
-                logger_dict[(i, ii)] = value
+                log_value!(logger_dict, value)
                 total += value * weights[ii]
             end
         end
         @inbounds out[i] = total
     end
-    return out
+    return out, logger_dict
 end
