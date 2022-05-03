@@ -50,8 +50,9 @@ end
 
 function dot_zero(
     matrix::CuArray{Float32, 2, CUDA.Mem.DeviceBuffer},
-    weights::CuArray{Float32, 1, CUDA.Mem.DeviceBuffer}
-)::Array{Float32}
+    weights::CuArray{Float32, 1, CUDA.Mem.DeviceBuffer},
+    logger_dict::Nothing
+)::Tuple{Array{Float32}, Nothing}
 
     len = length(matrix)
     N, M = size(matrix)
@@ -61,7 +62,7 @@ function dot_zero(
     out = CUDA.zeros(Float32, N)
 
     @cuda threads=threads_per_block blocks=blocks dot_zero_gpu_kernel!(matrix, weights, out, len, N, M)
-    return Array(out)
+    return Array(out), nothing
 end
 
 function mahalanobis_gpu_kernel!(
@@ -89,8 +90,9 @@ end
 function mahalanobis(
     biggie::CuArray{Float32, 2, CUDA.Mem.DeviceBuffer},
     small::CuArray{Float32, 2, CUDA.Mem.DeviceBuffer},
-    weights::CuArray{Float32, 1, CUDA.Mem.DeviceBuffer}
-)::Array{Float32}
+    weights::CuArray{Float32, 1, CUDA.Mem.DeviceBuffer},
+    logger_dict::Nothing
+)::Tuple{Array{Float32}, Nothing}
     len = length(biggie)
     N, M = size(biggie)
     threads_per_block = 256
@@ -100,5 +102,5 @@ function mahalanobis(
     out = CUDA.zeros(Float32, N)
 
     @cuda threads=threads_per_block blocks=blocks mahalanobis_gpu_kernel!(biggie, small, weights, out, len, N, M)
-    return Array(out)
+    return Array(out), nothing
 end

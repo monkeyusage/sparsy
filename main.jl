@@ -8,8 +8,8 @@ using Tables: table
 using Statistics: mean
 using CUDA
 
-include("gpu.jl")
-include("cpu.jl")
+include("src/gpu.jl")
+include("src/cpu.jl")
 
 function get_replacements(classes::Vector{T})::Dict{T, UInt64} where {T<:Number}
     # map unique elements to ints
@@ -77,9 +77,15 @@ function slice(
     return freq, weight, firms, year
 end
 
-function compute_metrics(matrix::AbstractArray{Float32, 2}, weight::AbstractArray{Float32})::NTuple{4, Array{Float32}}
+function compute_metrics(
+    matrix::AbstractArray{Float32, 2},
+    weight::AbstractArray{Float32},
+    use_logger::Bool=false,
+    year::UInt16
+)::NTuple{4, Array{Float32}}
+
+    logger_dict = use_logger ? Dict{NTuple{2, Int}, Vector{Float32}} : nothing
     α = (matrix ./ sum(matrix, dims=2))
-    
     # compute matrix of correlations between classes (m x m)
     β = tclass_corr(α)
 
@@ -88,12 +94,17 @@ function compute_metrics(matrix::AbstractArray{Float32, 2}, weight::AbstractArra
     ω = α ./ sqrt.(sum(α .* α, dims=2))
 
     # generate std measures
-    std = dot_zero(ω, weight)
-    cov_std = dot_zero(α, weight)
+    std, logger_dict = dot_zero(ω, weight, logger_dict)
+    cov_std, logger_dict = dot_zero(α, weight, use_logger)
 
     # # generate mahalanobis measure
-    ma = mahalanobis(ω, β*ω', weight)
-    cov_ma = mahalanobis(α, β*α', weight)
+    ma, logger_dict = mahalanobis(ω, β*ω', weight, use_logger)
+    cov_ma, logger_dict = mahalanobis(α, β*α', weight, use_logger)
+
+    if use_logger
+        log_big_matrix(logger_dict)
+    end
+
     return map((x) -> 100 * x, (std, cov_std, ma, cov_ma))
 end
 
@@ -108,7 +119,8 @@ function main(args)
 
     data = DataFrame(dtaload(input_file))
 
-    use_weight =  (weights_file != "") & !("no-weight" in args)
+    use_weight = (weights_file != "") & !("no-weight" in args)
+    use_logger = "log-matrix" in args
 
     weights = use_weight ? DataFrame(dtaload(weights_file)) : DataFrame(:weight => ones(Float32, size(data)[1]))
     data, weights = dataprep!(data, weights, use_weight)
@@ -140,11 +152,15 @@ function main(args)
     if (CUDA.functional() & !use_gpu); println("GPU available but ignored, computation might take a while"); end
     if use_gpu; println("CUDA available, using GPU"); end
 
+    if use_gpu & use_logger
+        println("Cannot use logger with GPU, switching to CPU version")
+    end
+
     for year_set in ProgressBar(years)
         out = slice(data, weights, year_set, use_weight, use_gpu)
         if isnothing(out); continue; end
         freq, weight, firms, year = out
-        std, cov_std, mal, cov_mal = compute_metrics(freq, weight)
+        std, cov_std, mal, cov_mal = compute_metrics(freq, weight, use_logger, year)
         csvwrite("data/tmp/$(year)_tmp.csv",
             DataFrame(
                 "std" => std,
