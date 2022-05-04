@@ -19,6 +19,8 @@ If you want to process the whole data in one pass simply insert a negative numbe
 If you do not want to use a weights data file then either set the `weight_data` field to "" in the config file or provide the argument `no-weight` when you call the script.
 If you have a GPU with CUDA and for some reason want to execute the program on the CPU then provide the `no-gpu` argument when calling the program.
 
+If you want to log intermediate result (WARNING this defeats the purpose of the project in terms of memory performance, only use for debugging), simply add the `use-logger` argument.
+
 For this project we optimised for memory size. This means the code could theoretically run faster but it would require bigger memory size. Even 128gigs of RAM might not be enough for certain jobs so our optimisation is the only viable option.
 
 Choosing smaller year_iteration will likely increase the execution speed. If you have a GPU the code should run significantly faster then on CPU.

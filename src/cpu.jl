@@ -1,12 +1,12 @@
-LogDict = Union{Dict{NTuple{2, Integer}, Vector{AbstractFloat}}, Nothing}
-function log_value!(dict::LogDict, value::AbstractFloat)::Nothing
+function log_value!(dict::Dict{NTuple{2, Int}, Vector{Float32}}, value::Float32, firm_pair::NTuple{2, Int})::Nothing
     if !isnothing(dict)
-        if haskey(dict, (i, ii))
-            push!(dict[(i, ii)], value)
+        if haskey(dict, firm_pair)
+            push!(dict[firm_pair], value)
         else
-            dict[(i, ii)] = [value]
+            dict[firm_pair] = [value]
         end
     end
+    return nothing
 end
 
 
@@ -23,15 +23,15 @@ function tclass_corr(matrix::Array{Float32, 2})::Array{Float32, 2}
             var[i, j] = var[i,i] == 0 || var[j,j] == 0 ? 1 : var[i, j] / (sqrt(base_var[i,i]) * sqrt(base_var[j,j]))
         end
     end
-    return
+    return var
 end
 
 
 function dot_zero(
     matrix::Array{Float32, 2},
     weights::Array{Float32, 1},
-    logger_dict::LogDict
-)::Tuple{Array{Float32}, LogDict}
+    logger_dict::Union{Nothing, Dict{NTuple{2, Int}, Vector{Float32}}}
+)::Array{Float32}
     """
     # vectorized version of the following operations with M (n, m) => NM (n, n) => n
     out = matrix * matrix' => creates a matrix we cannot store in RAM
@@ -41,7 +41,6 @@ function dot_zero(
     N, M = size(matrix)
 
     out = Array{Float32, 1}(undef, N)
-
     Threads.@threads for i in 1:N
         total = zero(Float32)
         @inbounds for ii in 1:N
@@ -49,22 +48,24 @@ function dot_zero(
             @inbounds for j in 1:M
                 # logging firm pair and the value associated to it
                 value = matrix[i, j] * matrix[ii, j]
-                log_value!(logger_dict, value)
+                if !isnothing(logger_dict)
+                    log_value!(logger_dict, value, (i, ii))
+                end
                 total += value * weights[ii]
             end
         end
         @inbounds out[i] = total
     end
 
-    return out, logger_dict
+    return out
 end
 
 function mahalanobis(
     biggie::Array{Float32, 2},
     small::Array{Float32, 2},
     weights::Array{Float32, 1},
-    logger_dict::LogDict
-)::Tuple{Array{Float32}, LogDict}
+    logger_dict::Dict{NTuple{2, Int}, Vector{Float32}}
+)::Array{Float32}
     """
     # vectorized version of the following operations
     out = biggie * (small * biggie')
@@ -82,11 +83,13 @@ function mahalanobis(
             @inbounds for j in 1:M
                 # logging firm pair and the value associated to it
                 value = biggie[i, j] * small[j, ii]
-                log_value!(logger_dict, value)
+                if !isnothing(logger_dict)
+                    log_value!(logger_dict, value, (i, ii))
+                end
                 total += value * weights[ii]
             end
         end
         @inbounds out[i] = total
     end
-    return out, logger_dict
+    return out
 end

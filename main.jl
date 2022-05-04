@@ -8,11 +8,26 @@ using Tables: table
 using Statistics: mean
 using CUDA
 
+using Debugger
+
 include("src/gpu.jl")
 include("src/cpu.jl")
 
-function log_big_matrix(dict::LogDict, year::UInt16)::Nothing
-    DataFrame
+function log_big_matrix(dict::Dict{NTuple{2, Int}, Vector{Float32}}, year::Integer)::Nothing
+    println("keys: $(length(keys(dict)))")
+    @bp
+    df = DataFrame(
+        :year=>Int(year),
+        :firm1 => [firms[1] for firms in keys(dict)],
+        :firm2 => [firms[2] for firms in keys(dict)],
+        :std => [vals[1] for vals in values(dict)],
+        :cov_std => [vals[2] for vals in values(dict)],
+        :mal => [vals[3] for vals in values(dict)],
+        :cov_mal => [vals[4] for vals in values(dict)]
+    )
+
+    csvwrite("data/intermediate_big_$year.csv", df)
+    return nothing
 end
 
 
@@ -85,14 +100,15 @@ end
 function compute_metrics(
     matrix::AbstractArray{Float32, 2},
     weight::AbstractArray{Float32},
-    use_logger::Bool=false,
+    use_logger::Bool,
     year::UInt16
 )::NTuple{4, Array{Float32}}
 
-    logger_dict = use_logger ? Dict{NTuple{2, Int}, Vector{Float32}} : nothing
-    # TODO: use append on each call
+    logger_dict = use_logger ? Dict{NTuple{2, Int}, Vector{Float32}}() : nothing
+
     α = (matrix ./ sum(matrix, dims=2))
     # compute matrix of correlations between classes (m x m)
+
     β = tclass_corr(α)
 
     # normalize the values inside matrix
@@ -100,15 +116,15 @@ function compute_metrics(
     ω = α ./ sqrt.(sum(α .* α, dims=2))
 
     # generate std measures
-    std, logger_dict = dot_zero(ω, weight, logger_dict)
-    cov_std, logger_dict = dot_zero(α, weight, logger_dict)
+    std = dot_zero(ω, weight, logger_dict)
+    cov_std = dot_zero(α, weight, logger_dict)
 
     # # generate mahalanobis measure
-    ma, logger_dict = mahalanobis(ω, β*ω', weight, logger_dict)
-    cov_ma, logger_dict = mahalanobis(α, β*α', weight, logger_dict)
+    ma = mahalanobis(ω, β*ω', weight, logger_dict)
+    cov_ma = mahalanobis(α, β*α', weight, logger_dict)
 
     if use_logger
-        log_big_matrix(logger_dict, year)
+        @run log_big_matrix(logger_dict, year)
     end
 
     return map((x) -> 100 * x, (std, cov_std, ma, cov_ma))
@@ -126,7 +142,7 @@ function main(args)
     data = DataFrame(dtaload(input_file))
 
     use_weight = (weights_file != "") & !("no-weight" in args)
-    use_logger = "log-matrix" in args
+    use_logger = "use-logger" in args
 
     weights = use_weight ? DataFrame(dtaload(weights_file)) : DataFrame(:weight => ones(Float32, size(data)[1]))
     data, weights = dataprep!(data, weights, use_weight)
