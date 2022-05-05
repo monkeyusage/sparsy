@@ -1,14 +1,4 @@
-function log_value!(dict::Dict{NTuple{2, Int}, Vector{Float32}}, value::Float32, firm_pair::NTuple{2, Int})::Nothing
-    if !isnothing(dict)
-        if haskey(dict, firm_pair)
-            push!(dict[firm_pair], value)
-        else
-            dict[firm_pair] = [value]
-        end
-    end
-    return nothing
-end
-
+using Defer
 
 function tclass_corr(matrix::Array{Float32, 2})::Array{Float32, 2}
     """
@@ -26,11 +16,48 @@ function tclass_corr(matrix::Array{Float32, 2})::Array{Float32, 2}
     return var
 end
 
+function logging(use_logger::Bool, year::Integer, metric::String)::Union{NTuple{2, Nothing}, Tuple{Task, Channel}}
+    # first create buffered channel to throw values into, buffered because otherwise we might run out of memory while writing
+    # create simple consumer, schedule it and return channel & task for later clean up
+    if !use_logger
+        return nothing, nothing
+    end
+
+    chan = Channel{Pair{NTuple{2, Int}, Float32}}(100_000)
+    open("data/tmp/intermediate_$(metric)_$year.csv", "w") do io
+        write(io, "year,firm1,firm2,value\n");
+    end
+
+    function consumer()
+        # this function takes on values from pipe until it's empty
+        # writes them to tmp file
+        open("data/tmp/intermediate_$(metric)_$year.csv", "a") do io
+            while true
+                try
+                    pair = take!(chan)
+                    (firm1, firm2), value =  pair
+                    write(io, "$year,$firm1,$firm2,$value\n");
+                catch
+                    break
+                end
+            end
+        end
+    end
+
+    # wrap it in a task to run in the background
+    task = @task consumer()
+    schedule(task) # launch it
+    
+    return task, chan
+end
+
 
 function dot_zero(
     matrix::Array{Float32, 2},
     weights::Array{Float32, 1},
-    logger_dict::Union{Nothing, Dict{NTuple{2, Int}, Vector{Float32}}}
+    use_logger::Bool=false,
+    year::Integer=1970,
+    metric::String=""
 )::Array{Float32}
     """
     # vectorized version of the following operations with M (n, m) => NM (n, n) => n
@@ -39,23 +66,30 @@ function dot_zero(
     out = sum(out, dims=2)
     """
     N, M = size(matrix)
-
     out = Array{Float32, 1}(undef, N)
+
+
+    bg_task, channel = logging(use_logger, year, metric)
+    
     Threads.@threads for i in 1:N
         total = zero(Float32)
         @inbounds for ii in 1:N
             if (i == ii) continue end
             @inbounds for j in 1:M
-                # logging firm pair and the value associated to it
                 value = matrix[i, j] * matrix[ii, j]
-                if !isnothing(logger_dict)
-                    log_value!(logger_dict, value, (i, ii))
+                if use_logger # put pair into the channel
+                    # this will block if the buffer is full
+                    put!(channel, (i, ii) => value)
                 end
                 total += value * weights[ii]
             end
         end
         @inbounds out[i] = total
     end
+
+    # clean up resources
+    close(channel)
+    wait(bg_task)
 
     return out
 end
@@ -64,7 +98,9 @@ function mahalanobis(
     biggie::Array{Float32, 2},
     small::Array{Float32, 2},
     weights::Array{Float32, 1},
-    logger_dict::Dict{NTuple{2, Int}, Vector{Float32}}
+    use_logger::Bool=false,
+    year::Integer=1970,
+    metric::String=""
 )::Array{Float32}
     """
     # vectorized version of the following operations
@@ -73,8 +109,9 @@ function mahalanobis(
     out = sum(out, dims=2)
     """
     N, M = size(biggie)
-
     out = Array{Float32}(undef, N)
+    
+    bg_task, channel = logging(use_logger, year, metric)
 
     Threads.@threads for i in 1:N
         total = Float32(0)
@@ -83,13 +120,19 @@ function mahalanobis(
             @inbounds for j in 1:M
                 # logging firm pair and the value associated to it
                 value = biggie[i, j] * small[j, ii]
-                if !isnothing(logger_dict)
-                    log_value!(logger_dict, value, (i, ii))
+                if use_logger # put pair into the channel
+                    # this will block if the buffer is full
+                    put!(channel, (i, ii) => value)
                 end
                 total += value * weights[ii]
             end
         end
         @inbounds out[i] = total
     end
+
+    # clean up resources
+    close(channel)
+    wait(bg_task)
+
     return out
 end

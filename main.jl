@@ -13,23 +13,6 @@ using Debugger
 include("src/gpu.jl")
 include("src/cpu.jl")
 
-function log_big_matrix(dict::Dict{NTuple{2, Int}, Vector{Float32}}, year::Integer)::Nothing
-    println("keys: $(length(keys(dict)))")
-    @bp
-    df = DataFrame(
-        :year=>Int(year),
-        :firm1 => [firms[1] for firms in keys(dict)],
-        :firm2 => [firms[2] for firms in keys(dict)],
-        :std => [vals[1] for vals in values(dict)],
-        :cov_std => [vals[2] for vals in values(dict)],
-        :mal => [vals[3] for vals in values(dict)],
-        :cov_mal => [vals[4] for vals in values(dict)]
-    )
-
-    csvwrite("data/intermediate_big_$year.csv", df)
-    return nothing
-end
-
 
 function get_replacements(classes::Vector{T})::Dict{T, UInt64} where {T<:Number}
     # map unique elements to ints
@@ -104,28 +87,22 @@ function compute_metrics(
     year::UInt16
 )::NTuple{4, Array{Float32}}
 
-    logger_dict = use_logger ? Dict{NTuple{2, Int}, Vector{Float32}}() : nothing
-
     α = (matrix ./ sum(matrix, dims=2))
     # compute matrix of correlations between classes (m x m)
 
     β = tclass_corr(α)
 
     # normalize the values inside matrix
-    # sum(α .* α, dims=2) == (α*α')[diagind(α)]
+    # NB: sum(α .* α, dims=2) == (α*α')[diagind(α)]
     ω = α ./ sqrt.(sum(α .* α, dims=2))
 
     # generate std measures
-    std = dot_zero(ω, weight, logger_dict)
-    cov_std = dot_zero(α, weight, logger_dict)
+    std = dot_zero(ω, weight, use_logger, year, "std")
+    cov_std = dot_zero(α, weight, use_logger, year, "cov_std")
 
     # # generate mahalanobis measure
-    ma = mahalanobis(ω, β*ω', weight, logger_dict)
-    cov_ma = mahalanobis(α, β*α', weight, logger_dict)
-
-    if use_logger
-        @run log_big_matrix(logger_dict, year)
-    end
+    ma = mahalanobis(ω, β*ω', weight, use_logger, year, "mal")
+    cov_ma = mahalanobis(α, β*α', weight, use_logger, year, "cov_mal")
 
     return map((x) -> 100 * x, (std, cov_std, ma, cov_ma))
 end
@@ -174,10 +151,8 @@ function main(args)
     if (CUDA.functional() & !use_gpu); println("GPU available but ignored, computation might take a while"); end
     if use_gpu; println("CUDA available, using GPU"); end
 
-    if use_gpu & use_logger
-        println("Cannot use logger with GPU, switching off logger or remove GPU usage")
-        return
-    end
+    if use_gpu & use_logger;println("Cannot use logger with GPU, switching off logger or remove GPU usage");return; end
+    if use_logger;println("Logger will slow down computation substantially, use for debugging only. Use maximum 2 or 3 threads when using this debug tool"); end
 
     for year_set in ProgressBar(years)
         out = slice(data, weights, year_set, use_weight, use_gpu)
