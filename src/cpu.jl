@@ -1,5 +1,3 @@
-using Defer
-
 function tclass_corr(matrix::Array{Float32, 2})::Array{Float32, 2}
     """
     # correlation over N * M matrix that return M * M correlation matrix
@@ -87,9 +85,11 @@ function dot_zero(
         @inbounds out[i] = total
     end
 
-    # clean up resources
-    close(channel)
-    wait(bg_task)
+    if use_logger
+        # clean up resources
+        close(channel)
+        wait(bg_task)
+    end
 
     return out
 end
@@ -130,9 +130,11 @@ function mahalanobis(
         @inbounds out[i] = total
     end
 
-    # clean up resources
-    close(channel)
-    wait(bg_task)
+    if use_logger
+        # clean up resources
+        close(channel)
+        wait(bg_task)
+    end
 
     return out
 end
