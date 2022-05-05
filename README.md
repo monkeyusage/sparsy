@@ -1,7 +1,20 @@
 # Sparsy
 
-Hey I though we needed sparse matrices !?
-The original problem was that the algorithm needed way too much memory. It was not solved using sparse matrices...
+We needed to multiply rectangular matrices (N,M) together resulting in (N,N) matrices and OutOfMemory errors.
+
+Here is the full naive algorithm in python/numpy:
+
+```python
+    def sparsy(matrix:np.ndarray) -> np.ndarray:
+        result = matrix * matrix.T
+        np.fill_diagonal(result, 0)
+        result = np.sum(result, axis=1)
+        return result
+    }
+```
+
+It was not solved using sparse matrices... We simply unrolled the loop trying everything at our disposal to make it fast as possible.
+Checking the git history you'll find numba, cython and other tricks but we settled with julia for its type system, ease of use with GPU overall speed. 
 
 ## Installation
 - To install the tools simply `git clone https://github.com/monkeyusage/sparsy` then `git pull` and finally run : `julia install.jl` into your terminal
@@ -31,6 +44,14 @@ Here is how you launch the script: `julia -t {number_of_cpu_cores} main.jl`
 If you want to provide additional command line arguments they should go after `main.jl` in you script call
 
 That could be:
-    - `julia -t {number_of_cpu_cores} main.jl no-weight no-gpu`
+    - `julia -t {number_of_cpu_cores} main.jl no-weight no-gpu use-logger`
 
 The *default behaviour* of the program is to use the weight file if there is one mentioned in the config and the GPU if your computer has CUDA.
+
+It will *not* use the logger by default as its use is very computationally expensive, only activate it when you absolutly need it.
+
+
+### The logger
+Logging things can be quite tedious if we do not want to run out of memory. We create a buffered Channel, you can think of it as a pipe with N slots allocated to it. The pipe is filled by the main thread and consumed by a task that writes the data to local files. We tried saving all the data in one datastructure but it resulted in crashes to memory errors. The Pipe is buffered meaning that if the writer does not go fast enough the producer will wait for the writer to free space on the channel to continue its work. The problem is that we cannot have multiple writers on the same file simultaneously, its ends up in race conditions.
+
+To sum up the logger is to be used with caution. If you want to alter its code get familiar with channels `https://docs.julialang.org/en/v1/manual/asynchronous-programming/#Communicating-with-Channels`. 
