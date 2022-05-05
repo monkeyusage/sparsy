@@ -21,9 +21,9 @@ function logging(use_logger::Bool, year::Integer, metric::String)::Union{NTuple{
         return nothing, nothing
     end
 
-    chan = Channel{Pair{NTuple{2, Int}, Float32}}(100_000)
+    chan = Channel{Pair{NTuple{3, Int}, Float32}}(100_000)
     open("data/tmp/intermediate_$(metric)_$year.csv", "w") do io
-        write(io, "year,firm1,firm2,value\n");
+        write(io, "year,firm1,firm2,class,value\n");
     end
 
     function consumer()
@@ -33,8 +33,8 @@ function logging(use_logger::Bool, year::Integer, metric::String)::Union{NTuple{
             while true
                 try
                     pair = take!(chan)
-                    (firm1, firm2), value =  pair
-                    write(io, "$year,$firm1,$firm2,$value\n");
+                    (firm1, firm2, class), value =  pair
+                    write(io, "$year,$firm1,$firm2,$class,$value\n");
                 catch
                     break
                 end
@@ -66,7 +66,6 @@ function dot_zero(
     N, M = size(matrix)
     out = Array{Float32, 1}(undef, N)
 
-
     bg_task, channel = logging(use_logger, year, metric)
     
     Threads.@threads for i in 1:N
@@ -77,7 +76,7 @@ function dot_zero(
                 value = matrix[i, j] * matrix[ii, j]
                 if use_logger # put pair into the channel
                     # this will block if the buffer is full
-                    put!(channel, (i, ii) => value)
+                    put!(channel, (i, ii, j) => value)
                 end
                 total += value * weights[ii]
             end
@@ -122,7 +121,7 @@ function mahalanobis(
                 value = biggie[i, j] * small[j, ii]
                 if use_logger # put pair into the channel
                     # this will block if the buffer is full
-                    put!(channel, (i, ii) => value)
+                    put!(channel, (i, ii, j) => value)
                 end
                 total += value * weights[ii]
             end
