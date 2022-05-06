@@ -70,15 +70,16 @@ function dot_zero(
     
     Threads.@threads for i in 1:N
         total = zero(Float32)
+        remainder = zero(Float32)
         @inbounds for ii in 1:N
             if (i == ii) continue end
             @inbounds for j in 1:M
                 value = matrix[i, j] * matrix[ii, j]
-                if use_logger # put pair into the channel
-                    # this will block if the buffer is full
-                    put!(channel, (i, ii, j) => value)
-                end
                 total += value * weights[ii]
+            end
+            if use_logger # put pair into the channel, this will block if the buffer is full
+                put!(channel, (i, ii) => total - remainder) # remove the remainder to extract value attributed to ii
+                remainder = total
             end
         end
         @inbounds out[i] = total
@@ -114,16 +115,17 @@ function mahalanobis(
 
     Threads.@threads for i in 1:N
         total = Float32(0)
+        remainder = Float32(0)
         @inbounds for ii in 1:N
             if ii == i continue end
             @inbounds for j in 1:M
                 # logging firm pair and the value associated to it
                 value = biggie[i, j] * small[j, ii]
-                if use_logger # put pair into the channel
-                    # this will block if the buffer is full
-                    put!(channel, (i, ii, j) => value)
-                end
                 total += value * weights[ii]
+            end
+            if use_logger # put pair into the channel, this will block if the buffer is full
+                put!(channel, (i, ii) => total - remainder) # remove the remainder to extract value attributed to ii
+                remainder = total
             end
         end
         @inbounds out[i] = total
