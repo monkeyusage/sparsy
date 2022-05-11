@@ -2,7 +2,7 @@ using JSON: json, parsefile
 using StatFiles: load as dtaload
 using CSV: write as csvwrite, read as csvread
 using DataFrames: DataFrame, replace!, rename!, sort!, groupby, combine
-using StaticArrays: StaticArray
+using StaticArrays: MVector
 using ProgressBars: ProgressBar
 using FreqTables: freqtable
 using Tables: table
@@ -85,15 +85,14 @@ end
 function logging(year::Integer)::Tuple{Task, Channel}
     # first create buffered channel to throw values into, buffered because otherwise we might run out of memory while writing
     # create simple consumer, schedule it and return channel & task for later clean up
-
     chan = Channel{LogMessage}(100_000)
-    cache = Dict{NTuple{2, Int}, MVector{4, Float32}}()
+    cache = Dict{NTuple{2, Int}, MVector{4, Float32}}() # MVector is a Mutable fixed sized Array of 4 Float32
     open("data/tmp/debug_$year.tsv", "w") do io
-        write(io, "year\tfirm1\tfirm2\tstd\tcov_std\tmal\tcov_mal\n");
+        write(io, "firm1\tfirm2\tstd\tcov_std\tmal\tcov_mal\n");
     end
 
     function consumer()
-        # this function takes on values from pipe until it's empty
+        # this function takes on values from channel until it's empty
         # writes them to debug file
         while true
             try
@@ -108,9 +107,10 @@ function logging(year::Integer)::Tuple{Task, Channel}
             end
         end
 
-        open("data/tmp/intermediate_$year.tsv", "a") do io
-            for x in xs
-                write(io, "$year\t$firm1\t$firm2\t$value\n");
+        open("data/tmp/debug_$year.tsv", "a") do io
+            for ((firm1, firm2), (std, cov_std, mal, cov_mal)) in cache
+                msg = "$firm1\t$firm2\t$std\t$cov_std\t$mal\t$cov_mal\n"
+                write(io, msg)
             end
         end
     end
@@ -201,7 +201,7 @@ function main(args)
         if isnothing(out); continue; end
         freq, weight, firms, year = out
         background_task, chan = use_logger ? logging(year) : (nothing, nothing)
-        std, cov_std, mal, cov_mal = compute_metrics(freq, weight)
+        std, cov_std, mal, cov_mal = compute_metrics(freq, weight, chan)
         
         csvwrite("data/tmp/$(year)_tmp.csv",
             DataFrame(
