@@ -143,7 +143,7 @@ function compute_metrics(
     std = dot_zero(ω, weight, channel, 1)
     cov_std = dot_zero(α, weight, channel, 2)
 
-    # # generate mahalanobis measure
+    # generate mahalanobis measure
     ma = mahalanobis(ω, β*ω', weight, channel, 3)
     cov_ma = mahalanobis(α, β*α', weight, channel, 4)
 
@@ -226,6 +226,7 @@ function main(args)
     files = [csvread("data/tmp/$file", DataFrame) for file in readdir("data/tmp/") if endswith(file, "_tmp.csv")]
     csvwrite(output_file, vcat(files...))
 
+    # clean up tmp files
     for file in readdir("data/tmp")
         if endswith(file, "_tmp.csv")
             rm("data/tmp/$file")
