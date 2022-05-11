@@ -4,6 +4,8 @@ struct LogMessage
     value::Float32
 end
 
+export tclass_corr, dot_zero, mahalanobis
+
 function tclass_corr(matrix::Array{Float32, 2})::Array{Float32, 2}
     """
     # correlation over N * M matrix that return M * M correlation matrix

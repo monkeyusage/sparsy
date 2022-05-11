@@ -1,5 +1,7 @@
 using CUDA
 
+export dot_zero, mahalanobis
+
 function tclass_corr(matrix::CuArray{Float32})::CuArray{Float32}
     var = matrix'matrix
     out = copy(var)

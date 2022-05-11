@@ -10,6 +10,7 @@ libraries = [
     "FreqTables",
     "Debugger",
     "CUDA",
+    "StaticArrays"
 ]
 
 for pkg in libraries
