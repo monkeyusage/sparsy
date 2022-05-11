@@ -2,6 +2,7 @@ using JSON: json, parsefile
 using StatFiles: load as dtaload
 using CSV: write as csvwrite, read as csvread
 using DataFrames: DataFrame, replace!, rename!, sort!, groupby, combine
+using StaticArrays: StaticArray
 using ProgressBars: ProgressBar
 using FreqTables: freqtable
 using Tables: table
@@ -80,11 +81,52 @@ function slice(
     return freq, weight, firms, year
 end
 
+
+function logging(year::Integer)::Tuple{Task, Channel}
+    # first create buffered channel to throw values into, buffered because otherwise we might run out of memory while writing
+    # create simple consumer, schedule it and return channel & task for later clean up
+
+    chan = Channel{LogMessage}(100_000)
+    cache = Dict{NTuple{2, Int}, MVector{4, Float32}}()
+    open("data/tmp/debug_$year.tsv", "w") do io
+        write(io, "year\tfirm1\tfirm2\tstd\tcov_std\tmal\tcov_mal\n");
+    end
+
+    function consumer()
+        # this function takes on values from pipe until it's empty
+        # writes them to debug file
+        while true
+            try
+                msg = take!(chan) # blocks
+                if !haskey(cache, msg.key)
+                    cache[msg.key] = [msg.value, 0, 0, 0]
+                else
+                    cache[msg.key][msg.index] = msg.value
+                end
+            catch
+                break
+            end
+        end
+
+        open("data/tmp/intermediate_$year.tsv", "a") do io
+            for x in xs
+                write(io, "$year\t$firm1\t$firm2\t$value\n");
+            end
+        end
+    end
+
+    # wrap it in a task to run in the background
+    task = @task consumer()
+    schedule(task) # launch it
+    
+    return task, chan
+end
+
+
 function compute_metrics(
     matrix::AbstractArray{Float32, 2},
     weight::AbstractArray{Float32},
-    use_logger::Bool,
-    year::UInt16
+    channel::Union{Channel{LogMessage}, Nothing}
 )::NTuple{4, Array{Float32}}
 
     α = (matrix ./ sum(matrix, dims=2))
@@ -97,12 +139,12 @@ function compute_metrics(
     ω = α ./ sqrt.(sum(α .* α, dims=2))
 
     # generate std measures
-    std = dot_zero(ω, weight, use_logger, year, "std")
-    cov_std = dot_zero(α, weight, use_logger, year, "cov_std")
+    std = dot_zero(ω, weight, channel, 1)
+    cov_std = dot_zero(α, weight, channel, 2)
 
     # # generate mahalanobis measure
-    ma = mahalanobis(ω, β*ω', weight, use_logger, year, "mal")
-    cov_ma = mahalanobis(α, β*α', weight, use_logger, year, "cov_mal")
+    ma = mahalanobis(ω, β*ω', weight, channel, 3)
+    cov_ma = mahalanobis(α, β*α', weight, channel, 4)
 
     return map((x) -> 100 * x, (std, cov_std, ma, cov_ma))
 end
@@ -158,7 +200,9 @@ function main(args)
         out = slice(data, weights, year_set, use_weight, use_gpu)
         if isnothing(out); continue; end
         freq, weight, firms, year = out
-        std, cov_std, mal, cov_mal = compute_metrics(freq, weight, use_logger, year)
+        background_task, chan = use_logger ? logging(year) : (nothing, nothing)
+        std, cov_std, mal, cov_mal = compute_metrics(freq, weight)
+        
         csvwrite("data/tmp/$(year)_tmp.csv",
             DataFrame(
                 "std" => std,
@@ -169,6 +213,12 @@ function main(args)
                 "year" => year
             )
         )
+
+        if use_logger
+            close(chan)
+            wait(background_task)
+        end
+
     end
 
     # merge all output files together, delete tmp files

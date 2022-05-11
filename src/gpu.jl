@@ -51,9 +51,8 @@ end
 function dot_zero(
     matrix::CuArray{Float32, 2, CUDA.Mem.DeviceBuffer},
     weights::CuArray{Float32, 1, CUDA.Mem.DeviceBuffer},
-    use_logger::Bool=false,
-    year::Integer=1970,
-    metric::String=""
+    channel::Nothing,
+    index::Int
 )::Array{Float32}
     # unused arguments are here to still contain same arguments as CPU version so we can call them seamlessly
     len = length(matrix)
@@ -93,9 +92,8 @@ function mahalanobis(
     biggie::CuArray{Float32, 2, CUDA.Mem.DeviceBuffer},
     small::CuArray{Float32, 2, CUDA.Mem.DeviceBuffer},
     weights::CuArray{Float32, 1, CUDA.Mem.DeviceBuffer},
-    use_logger::Bool=false,
-    year::Integer=1970,
-    metric::String=""
+    channel::Nothing,
+    index::Int
 )::Array{Float32}
     len = length(biggie)
     N, M = size(biggie)
