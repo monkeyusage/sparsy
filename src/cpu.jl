@@ -70,7 +70,7 @@ function mahalanobis(
 )::Array{Float32}
     """
     # vectorized version of the following operations
-    out = biggie * (small * biggie')
+    out = biggie * small
     out[diagind(out)] .= 0
     out = sum(out, dims=2)
     """
