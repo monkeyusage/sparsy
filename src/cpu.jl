@@ -40,17 +40,19 @@ function dot_zero(
     
     Threads.@threads for i in 1:N
         total = zero(Float32)
+        unweighted_total = zero(Float32)
         remainder = zero(Float32)
         @inbounds for ii in 1:N
             if (i == ii) continue end
             @inbounds for j in 1:M
                 value = matrix[i, j] * matrix[ii, j]
                 total += value * weights[ii]
+                unweighted_total += value
             end
             if !isnothing(channel) # put LogMessage into the channel, this will block if the buffer is full
-                msg = LogMessage((i, ii), index, (total - remainder))
+                msg = LogMessage((i, ii), index, (unweighted_total - remainder))
                 put!(channel, msg) # remove the remainder to extract value attributed to ii
-                remainder = total
+                remainder = unweighted_total
             end
         end
         @inbounds out[i] = total

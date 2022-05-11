@@ -82,13 +82,13 @@ function slice(
 end
 
 
-function logging(year::Integer)::Tuple{Task, Channel}
+function logging(year::Integer, firms::Vector{Int64}, size::Integer)::Tuple{Task, Channel}
     # first create buffered channel to throw values into, buffered because otherwise we might run out of memory while writing
     # create simple consumer, schedule it and return channel & task for later clean up
     chan = Channel{LogMessage}(100_000)
     cache = Dict{NTuple{2, Int}, MVector{4, Float32}}() # MVector is a Mutable fixed sized Array of 4 Float32
-    open("data/tmp/debug_$year.tsv", "w") do io
-        write(io, "firm1\tfirm2\tstd\tcov_std\tmal\tcov_mal\n");
+    open("data/tmp/pairwise_$(size)_$(year).csv", "w") do io
+        write(io, "firm1,firm2,std,cov_std,mal,cov_mal\n");
     end
 
     function consumer()
@@ -97,19 +97,20 @@ function logging(year::Integer)::Tuple{Task, Channel}
         while true
             try
                 msg = take!(chan) # blocks
-                if !haskey(cache, msg.key)
-                    cache[msg.key] = [msg.value, 0, 0, 0]
+                key = (firms[msg.key[1]], firms[msg.key[2]])
+                if !haskey(cache, key)
+                    cache[key] = [msg.value, 0, 0, 0] # insert first Array to  
                 else
-                    cache[msg.key][msg.index] = msg.value
+                    cache[key][msg.index] = msg.value
                 end
             catch
                 break
             end
         end
 
-        open("data/tmp/debug_$year.tsv", "a") do io
+        open("data/tmp/pairwise_$(size)_$(year).csv", "a") do io
             for ((firm1, firm2), (std, cov_std, mal, cov_mal)) in cache
-                msg = "$firm1\t$firm2\t$std\t$cov_std\t$mal\t$cov_mal\n"
+                msg = "$firm1,$firm2,$std,$cov_std,$mal,$cov_mal\n"
                 write(io, msg)
             end
         end
@@ -200,7 +201,7 @@ function main(args)
         out = slice(data, weights, year_set, use_weight, use_gpu)
         if isnothing(out); continue; end
         freq, weight, firms, year = out
-        background_task, chan = use_logger ? logging(year) : (nothing, nothing)
+        background_task, chan = use_logger ? logging(year, firms, iter_size) : (nothing, nothing)
         std, cov_std, mal, cov_mal = compute_metrics(freq, weight, chan)
         
         csvwrite("data/tmp/$(year)_tmp.csv",
