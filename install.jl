@@ -22,14 +22,15 @@ import JSON:json
 
 function main()
     mkpath("data/tmp")
+    config = json(Dict(
+        "input_data" => "data/data.dta",
+        "weight_data" => "data/weight.dta",
+        "output_data"=> "data/output.csv",
+        "year_iteration" => 1
+     ), 4)
+
     open("data/config.json", "w") do f
-        config = Dict(
-            "input_data" => "data/data.dta",
-            "weight_data" => "data/weight.dta",
-            "output_data"=> "data/output.csv",
-            "year_iteration" => 1
-        )
-        write(f, json(config, 4))
+        write(f, config)
     end
 end
 
