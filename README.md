@@ -34,7 +34,7 @@ If you want to log intermediate result (WARNING this defeats the purpose of the 
 
 For this project we optimised for memory size. This means the code could theoretically run faster but it would require bigger memory size. Even 128gigs of RAM might not be enough for certain jobs so our optimisation is the only viable option.
 
-Choosing smaller year_iteration will likely increase the execution speed. If you have a GPU the code should run significantly faster then on CPU.
+Choosing smaller year_iteration will likely increase the execution speed. If you have a GPU the code should run significantly faster than on CPU.
 
 ## Running the project
 Here is how you launch the script: `julia -t {number_of_cpu_cores} main.jl`
