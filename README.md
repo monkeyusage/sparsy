@@ -6,15 +6,13 @@ Here is the full naive algorithm in python/numpy:
 
 ```python
     def sparsy(matrix:np.ndarray) -> np.ndarray:
-        result = matrix * matrix.T
+        result = matrix.dot(matrix.T)
         np.fill_diagonal(result, 0)
-        result = np.sum(result, axis=1)
-        return result
-    }
+        return result.sum(axis=1)
 ```
 
 It was not solved using sparse matrices... We simply unrolled the loop trying everything at our disposal to make it fast as possible.
-Checking the git history you'll find numba, cython and other tricks but we settled with julia for its type system, ease of use with GPU overall speed. 
+Checking the git history you'll find numba, cython and other tricks but we settled with julia for its type system, ease of use with GPU and overall speed. 
 
 ## Installation
 - To install the tools simply `git clone https://github.com/monkeyusage/sparsy` then `git pull` and finally run : `julia install.jl` into your terminal
